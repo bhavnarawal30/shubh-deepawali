@@ -1,6 +1,6 @@
 # Shubh Deepawali
 
-Live at **https://shubh-deepawali-gilt.vercel.app**: every push to `main` deploys automatically.
+Live at **https://shubhdeepawali.vercel.app**: every push to `main` deploys automatically.
 
 A Diwali courtyard at dusk with glowing diyas and fairy lights, where you can:
 
