@@ -8,3 +8,5 @@ courtyard.webp
 courtyard-wide.webp
 extend.py
 extra-lights.json
+.vercel
+.env*

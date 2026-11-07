@@ -4,3 +4,11 @@ build_*.py
 tray-photo.webp
 stencils/*-regions.png
 README.md
+
+# never upload local-only files
+.env*
+.claude/
+courtyard.webp
+courtyard-wide.webp
+extend.py
+extra-lights.json
