@@ -128,12 +128,6 @@
   .rangoli .r-free { filter: drop-shadow(0 calc(1.2 * var(--u)) calc(1 * var(--u)) rgba(0,0,0,.45)); }
   .rangoli .r-dots { opacity: 0; transition: opacity .4s; filter: drop-shadow(0 calc(1 * var(--u)) calc(1 * var(--u)) rgba(0,0,0,.45)); }
   .rangoli.dots .r-dots { opacity: 1; }
-  .rangoli .r-band {                         /* where diyas can go; reaches 136 units past the square */
-    inset: auto; left: -13.28125%; top: -13.28125%; width: 126.5625%; height: 126.5625%;
-    opacity: 0; transition: opacity .4s; pointer-events: none;
-    filter: drop-shadow(0 calc(1 * var(--u)) calc(1 * var(--u)) rgba(0,0,0,.45));
-  }
-  .rangoli.placing .r-band { opacity: .75; }
   .rangoli .r-greet {                        /* floor band y = -400..-80 (rangoli square is 0..1024) */
     inset: auto; left: 0; top: -39.0625%; width: 100%; height: 31.25%;
     filter: drop-shadow(0 calc(1 * var(--u)) calc(1 * var(--u)) rgba(0,0,0,.4));
@@ -216,12 +210,12 @@
     position: fixed; z-index: 5; margin: 0; white-space: nowrap; transform: translateX(-50%);
     animation: hint-in .6s .2s ease-out both;
   }
-  .quarter-hint {                            /* on the floor, just below the quarter square */
+  .floor-hint {                              /* on the floor, just below the rangoli */
     position: fixed; z-index: 5; margin: 0; white-space: nowrap; pointer-events: none;
     transform: translate(-50%, 10px);
     animation: hint-in .5s ease-out both;
   }
-  .quarter-hint[hidden] { display: none; }
+  .floor-hint[hidden] { display: none; }
   @keyframes hint-in { from { opacity: 0; } }
   .tray-hint[hidden] { display: none; }
   .tray-hint.nudge { animation: nudge .45s; }
@@ -310,7 +304,7 @@
   .tool-btn:focus-visible { outline: 2px solid #ffc46b; outline-offset: 3px; }
   /* All help text: plain, soft cream italic on the scene, no box, no shadow.
      Dimmed so it doesn't compete with the rangoli, still clear on the dark floor. */
-  .tool-btn::after, .diya-tip, .bar-hint, .tray-hint, .quarter-hint {
+  .tool-btn::after, .diya-tip, .bar-hint, .tray-hint, .floor-hint {
     color: rgba(255, 228, 194, .74); font: italic 500 14px/1.3 "Iowan Old Style", Georgia, serif;
   }
   .tool-btn::after, .diya-tip {              /* hover hints */
@@ -345,24 +339,6 @@
   @keyframes wave { 50% { opacity: .35; } }
   @keyframes nudge-speaker { 30% { transform: rotate(-8deg); } 70% { transform: rotate(6deg); } }
   #music-btn .speaker { transform-origin: 8px 12px; transform-box: view-box; }
-  /* volume: slides in under the music button on hover, below its hint */
-  .music-group { position: relative; }
-  .vol {
-    position: absolute; top: 100%; right: 0; padding-top: 38px;     /* the padding bridges the gap, so hover isn't lost */
-    display: flex; align-items: center; gap: 8px; white-space: nowrap;
-    color: rgba(255, 228, 194, .74); font: italic 500 14px/1 "Iowan Old Style", Georgia, serif;
-    opacity: 0; pointer-events: none; transform: translateY(-4px);
-    transition: opacity .2s .3s, transform .2s .3s;                  /* lingers a moment as you move to it */
-  }
-  .music-group:hover .vol, .music-group:focus-within .vol { opacity: 1; pointer-events: auto; transform: none; transition-delay: .15s; }
-  .vol b { min-width: 2.6em; font: 600 12.5px/1 system-ui, -apple-system, "Segoe UI", sans-serif; font-style: normal; color: rgba(255, 214, 150, .9); text-align: right; }
-  .vol input { width: 96px; height: 16px; margin: 0; background: transparent; cursor: pointer; -webkit-appearance: none; appearance: none; }
-  .vol input::-webkit-slider-runnable-track { height: 2px; border-radius: 1px; background: rgba(255, 228, 190, .4); }
-  .vol input::-moz-range-track { height: 2px; border-radius: 1px; background: rgba(255, 228, 190, .4); }
-  .vol input::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; margin-top: -5px; border-radius: 50%; background: #fff1da; transition: transform .15s; }
-  .vol input::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: #fff1da; }
-  .vol input:hover::-webkit-slider-thumb, .vol input:active::-webkit-slider-thumb { transform: scale(1.3); }
-  .vol input:focus-visible { outline: 1.5px solid rgba(255, 196, 107, .8); outline-offset: 3px; border-radius: 4px; }
   #music-btn[aria-pressed="true"] { border-color: #ffc46b; color: #fff6e6; box-shadow: 0 8px 20px rgba(0,0,0,.35), 0 0 16px rgba(255, 170, 60, .35); }
   body:has(.diya-btn[aria-pressed="true"]) .modes .mode-btn { opacity: .6; }
   .mode-btn {
@@ -405,6 +381,8 @@
   .mode-btn svg .dot { fill: currentColor; stroke: none; }
   .diya-btn .lamp { fill: currentColor; stroke: none; opacity: .85; }
   .diya-btn .fire { fill: #ffb547; stroke: none; }
+  .diya-btn[aria-pressed="true"] .lamp { opacity: 1; }
+  .diya-btn[aria-pressed="true"] .fire { fill: #b02a08; stroke: #fff4d8; stroke-width: .8; }
   .diya-btn[aria-disabled="true"] { opacity: .38 !important; cursor: not-allowed; filter: saturate(.4); }
   .diya-btn[aria-disabled="true"] .spark, .diya-btn[aria-disabled="true"]::before { animation: none; opacity: 0; }
   .diya-btn[aria-disabled="true"]:hover { transform: none; }
@@ -508,7 +486,6 @@
     <canvas class="r-line"></canvas>
     <canvas class="r-dots"></canvas>
     <canvas class="r-free"></canvas>
-    <canvas class="r-band"></canvas>
     <!-- शुभ दीपावली in powder, on the floor just above the rangoli; always there -->
     <canvas class="r-greet" aria-label="Shubh Deepawali" role="img"></canvas>
     <!-- quarter guides: dots on the same 40px grid as "Add dots" -->
@@ -542,9 +519,9 @@
 <div class="draw-layer" id="draw-layer"></div>
 
 <!-- Controls, set at the foot of the stairs -->
-<p class="quarter-hint" id="quarter-hint" hidden>Draw in any quarter, the other three follow</p>
+<p class="floor-hint" id="quarter-hint" hidden>Draw in any quarter, the other three follow</p>
+<p class="floor-hint" id="diya-hint" hidden>Tap the rangoli to set a diya, tap one to lift it</p>
 <div class="floor-bar" id="diya-bar" role="toolbar" aria-label="Placing diyas" hidden>
-  <p class="bar-hint">Tap the rangoli to set a diya, tap one to lift it</p>
   <button class="text-btn" data-act="clear-diyas">Clear diyas</button>
   <button class="text-btn" data-act="diyas-done">Done</button>
 </div>
@@ -577,7 +554,6 @@
     </svg>
     <span class="spin" aria-hidden="true"></span>
   </button>
-  <div class="music-group">
   <button class="tool-btn" id="music-btn" aria-pressed="false" aria-label="Play festive music" data-tip="Play festive music">
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path class="speaker" d="M4 9.5h3l4.5-4v13L7 14.5H4z"/>
@@ -586,12 +562,6 @@
       <path class="mute" d="m15.5 9.5 5 5m0-5-5 5"/>
     </svg>
   </button>
-  <label class="vol">                          <!-- shows when you hover the music button -->
-    <span>Volume</span>
-    <input type="range" id="music-vol" min="0" max="100" step="1" value="70" aria-valuetext="70%">
-    <b id="music-vol-val">70%</b>
-  </label>
-  </div>
 </div>
 <!-- Festive track: Diwali instrumental, about 3 minutes, loops -->
 <audio id="music" src="music/diwali.mp3" loop preload="none"></audio>
@@ -647,6 +617,7 @@
     walk: 0, sway: 0, gust: 0, nextGust: performance.now() + 2000 + Math.random() * 6000,
   });
   const diyas = [...document.querySelectorAll('.diya')].map(track);
+
   // Diyas placed on the rangoli (rangoli.js) flicker with the same code.
   window.diyaFlicker = {
     add: el => diyas.push(track(el)),

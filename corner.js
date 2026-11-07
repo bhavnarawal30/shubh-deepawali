@@ -1,8 +1,7 @@
 // Top-right buttons.
 //  - Download: rebuilds the courtyard with your rangoli and diyas as a picture
 //    (photo, rangoli warped onto the floor, every diya's light) and saves it.
-//  - Music: switches the festive track (<audio id="music">) on and off, with a
-//    volume slider that shows when you hover the button.
+//  - Music: switches the festive track (<audio id="music">) on and off.
 (() => {
   const SRC_W = 1672, SRC_H = 941;           // the photo's size; the stage is laid out in these units
   const SCALE = 2;                           // saved picture is twice that, so the powder stays crisp
@@ -203,25 +202,10 @@
   // ---------- Music ----------
   const music = document.getElementById('music');
   const mb = document.getElementById('music-btn');
-  const volIn = document.getElementById('music-vol');
-  // The track is loud, so the slider covers a quiet range: 100% plays at 6% of
-  // the file's level and 70% (the start) about 3%. Squared, so the low end gets fine control.
-  const MAX_GAIN = .06;
-  const gain = pct => MAX_GAIN * (pct / 100) ** 2;
-  let volume = gain(70);                     // starts at 70% on the slider
+  // The track is loud, so it plays at a fixed, gentle level: about 3% of the
+  // file's own volume (what "70%" was on the old slider), whatever the device is set to.
+  const VOLUME = .06 * .7 ** 2;
   let fade = 0;
-  function setVolume(pct) {
-    volume = gain(pct);
-    volIn.value = pct;
-    volIn.setAttribute('aria-valuetext', pct + '%');
-    document.getElementById('music-vol-val').textContent = pct + '%';
-    if (mb.getAttribute('aria-pressed') === 'true') { clearInterval(fade); music.volume = volume; }
-  }
-  volIn.addEventListener('input', () => {
-    setVolume(+volIn.value);
-    try { localStorage.setItem('rangoli-music-volume', volIn.value); } catch {}
-  });
-  try { const v = localStorage.getItem('rangoli-music-volume'); if (v !== null) setVolume(+v); } catch {}
   mb.addEventListener('click', () => {
     const on = mb.getAttribute('aria-pressed') !== 'true';
     mb.setAttribute('aria-pressed', String(on));
@@ -229,7 +213,7 @@
     mb.setAttribute('aria-label', on ? 'Turn music off' : 'Play festive music');
     clearInterval(fade);
     if (on) { music.volume = 0; music.play().catch(() => {}); }
-    const from = music.volume, to = on ? volume : 0, t0 = performance.now();
+    const from = music.volume, to = on ? VOLUME : 0, t0 = performance.now();
     fade = setInterval(() => {                             // gentle fade in and out (a timer, so it finishes in a background tab too)
       const k = Math.min(1, (performance.now() - t0) / 800);
       music.volume = from + (to - from) * k;

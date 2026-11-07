@@ -425,7 +425,19 @@
     quarterHint.style.left = x + 'px';
     quarterHint.style.top = y + 'px';
   }
-  addEventListener('resize', () => { if (!quarterHint.hidden) { mapping = null; placeQuarterHint(); } });
+  const diyaHint = document.getElementById('diya-hint');
+  function placeDiyaHint() {                 // under the bottom of the ring where diyas can go, above the buttons
+    const [fx, fy] = reach ? [reach.cx, reach.cy + reach.r[ANG / 4]] : [N / 2, N];
+    const [x, y] = map().toScreen(fx, fy);
+    const limit = document.querySelector('.modes').getBoundingClientRect().top - 18 - diyaHint.offsetHeight;
+    diyaHint.style.left = x + 'px';
+    diyaHint.style.top = Math.min(y, limit) + 'px';
+  }
+  addEventListener('resize', () => {
+    mapping = null;
+    if (!quarterHint.hidden) placeQuarterHint();
+    if (!diyaHint.hidden) placeDiyaHint();
+  });
 
   function showFloor(f) {
     floor = f;
@@ -448,8 +460,7 @@
     modeBtns.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === m)));
     for (const [name, el] of Object.entries(bars)) el.hidden = name !== m;
     plane.classList.toggle('drawing', m === 'draw');
-    plane.classList.toggle('placing', m === 'diya');
-    if (m === 'diya') { reach = measureReach(); drawReach(); }
+    if (m === 'diya') reach = measureReach();
     mapping = null;
     pen.down = pen.over = false;
     if (m !== 'color') openFan(false);
@@ -458,6 +469,8 @@
     showTray(filling());
     quarterHint.hidden = m !== 'draw';
     if (m === 'draw') placeQuarterHint();
+    diyaHint.hidden = m !== 'diya';
+    if (m === 'diya') placeDiyaHint();
     ghost.style.display = 'none';
   }
   modeBtns.forEach(b => b.addEventListener('click', () => {
@@ -603,12 +616,10 @@
   // Where diyas may go: anywhere inside the rangoli, or in a band around it that
   // reaches BAND floor units out from its outermost powder, the same all round.
   // Found with a distance field over the floor, then traced from the rangoli's
-  // middle outward in every direction so the edge is one clean ring.
+  // middle outward in every direction so the edge is one clean ring (not drawn).
   const BAND = 88, CELL = 8, PAD = 136;      // floor units; PAD leaves room for the band past the square
   const GN = (N + 2 * PAD) / CELL;           // grid cells across (162)
   const ANG = 360;
-  const bandCv = plane.querySelector('.r-band');
-  bandCv.width = bandCv.height = N + 2 * PAD;
   let reach = null;                          // { cx, cy, r: radius of the ring at each degree }
   function measureReach() {
     const g = N / CELL, off = PAD / CELL;
@@ -672,32 +683,6 @@
     const k0 = Math.floor(k) % ANG, f = k - Math.floor(k);
     return Math.hypot(dx, dy) <= reach.r[k0] * (1 - f) + reach.r[(k0 + 1) % ANG] * f;
   }
-  function drawReach() {                     // the ring as faint powder dots, 40 units apart
-    const c = bandCv.getContext('2d');
-    c.clearRect(0, 0, bandCv.width, bandCv.height);
-    if (!reach) return;
-    const pts = [];
-    for (let k = 0; k <= ANG; k++) {
-      const t = k / ANG * Math.PI * 2, r = reach.r[k % ANG];
-      pts.push([reach.cx + Math.cos(t) * r + PAD, reach.cy + Math.sin(t) * r + PAD]);
-    }
-    let walked = 0, next = 0;                // distance along the ring so far, and to the next dot
-    for (let k = 1; k < pts.length; k++) {
-      const [ax, ay] = pts[k - 1], [bx, by] = pts[k];
-      const L = Math.hypot(bx - ax, by - ay);
-      for (; next <= walked + L; next += 40) {
-        const t = L ? (next - walked) / L : 0;
-        const x = ax + (bx - ax) * t, y = ay + (by - ay) * t;
-        for (let g = 0; g < 14; g++) {
-          const s = 0.6 + Math.random() * 1.1;
-          c.fillStyle = WHITE[(Math.random() * WHITE.length) | 0];
-          c.fillRect(x + gauss() * 1.5 - s / 2, y + gauss() * 1.5 - s / 2, s, s);
-        }
-      }
-      walked += L;
-    }
-  }
-
   function liftDiya(d) {
     const list = placed[floor];
     list.splice(list.indexOf(d), 1);
