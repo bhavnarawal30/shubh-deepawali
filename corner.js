@@ -1,8 +1,8 @@
 // Top-right buttons.
 //  - Download: rebuilds the courtyard with your rangoli and diyas as a picture
 //    (photo, rangoli warped onto the floor, every diya's light) and saves it.
-//  - Music: switches the festive track on and off. Set the track with the src
-//    of <audio id="music"> in index.html; until then the switch just keeps its state.
+//  - Music: switches the festive track (<audio id="music">) on and off, with a
+//    volume slider that shows when you hover the button.
 (() => {
   const SRC_W = 1672, SRC_H = 941;           // the photo's size; the stage is laid out in these units
   const SCALE = 2;                           // saved picture is twice that, so the powder stays crisp
@@ -203,23 +203,40 @@
   // ---------- Music ----------
   const music = document.getElementById('music');
   const mb = document.getElementById('music-btn');
+  const volIn = document.getElementById('music-vol');
+  // The track is loud, so the slider covers a quiet range: 100% plays at 6% of
+  // the file's level and 70% (the start) about 3%. Squared, so the low end gets fine control.
+  const MAX_GAIN = .06;
+  const gain = pct => MAX_GAIN * (pct / 100) ** 2;
+  let volume = gain(70);                     // starts at 70% on the slider
   let fade = 0;
+  function setVolume(pct) {
+    volume = gain(pct);
+    volIn.value = pct;
+    volIn.setAttribute('aria-valuetext', pct + '%');
+    document.getElementById('music-vol-val').textContent = pct + '%';
+    if (mb.getAttribute('aria-pressed') === 'true') { clearInterval(fade); music.volume = volume; }
+  }
+  volIn.addEventListener('input', () => {
+    setVolume(+volIn.value);
+    try { localStorage.setItem('rangoli-music-volume', volIn.value); } catch {}
+  });
+  try { const v = localStorage.getItem('rangoli-music-volume'); if (v !== null) setVolume(+v); } catch {}
   mb.addEventListener('click', () => {
     const on = mb.getAttribute('aria-pressed') !== 'true';
     mb.setAttribute('aria-pressed', String(on));
     mb.dataset.tip = on ? 'Music on. Tap to turn it off' : 'Play festive music';
     mb.setAttribute('aria-label', on ? 'Turn music off' : 'Play festive music');
-    if (!music.getAttribute('src')) return;              // no track yet
-    cancelAnimationFrame(fade);
+    clearInterval(fade);
     if (on) { music.volume = 0; music.play().catch(() => {}); }
-    const from = music.volume, to = on ? .6 : 0, t0 = performance.now();
-    const step = now => {                                  // gentle fade in and out
-      const k = Math.min(1, (now - t0) / 800);
+    const from = music.volume, to = on ? volume : 0, t0 = performance.now();
+    fade = setInterval(() => {                             // gentle fade in and out (a timer, so it finishes in a background tab too)
+      const k = Math.min(1, (performance.now() - t0) / 800);
       music.volume = from + (to - from) * k;
-      if (k < 1) fade = requestAnimationFrame(step);
-      else if (!on) music.pause();
-    };
-    fade = requestAnimationFrame(step);
+      if (k < 1) return;
+      clearInterval(fade);
+      if (!on) music.pause();
+    }, 30);
   });
 
   window.rangoliSnapshot = snapshot;                     // handy for testing from the console
