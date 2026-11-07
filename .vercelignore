@@ -1,0 +1,6 @@
+# Only the page and its assets go live; the scripts and source photos that
+# generate those assets stay in the repo.
+build_*.py
+tray-photo.webp
+stencils/*-regions.png
+README.md

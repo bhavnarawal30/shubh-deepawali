@@ -1,0 +1,10 @@
+# local tool settings
+.claude/
+.vercel/
+.DS_Store
+
+# earlier versions of the background, no longer used
+courtyard.webp
+courtyard-wide.webp
+extend.py
+extra-lights.json

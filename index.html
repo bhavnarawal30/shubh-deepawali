@@ -1,0 +1,664 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diya Courtyard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600&family=Yatra+One&display=swap">
+<style>
+  :root { --bg: #140a04; }
+  html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; }
+
+  /* Stage keeps the photo's 1672x941 (16:9) ratio so overlays stay pinned to the
+     right pixels, and is scaled to cover the whole screen. */
+  .stage {
+    position: absolute; left: 50%; top: 50%;
+    width: max(100vw, 100vh * 1672 / 941);
+    aspect-ratio: 1672 / 941;
+    transform: translate(-50%, -50%);
+    container-type: size;
+    --u: calc(100cqw / 1672);          /* 1 source-image pixel */
+  }
+
+  .photo {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    filter: brightness(.68) contrast(1.1) saturate(1.15);   /* dim the baked-in light so the live light can push back */
+  }
+
+  .light { position: absolute; left: calc(var(--x) * var(--u)); top: calc(var(--y) * var(--u)); }
+  .light > * { position: absolute; left: 0; top: 0; pointer-events: none; mix-blend-mode: screen; }
+
+  /* ---------- Diyas ---------- */
+  .room, .halo, .pool { border-radius: 50%; transform: translate(-50%, -50%); }
+
+  .room {                                   /* wide warm spill on walls & floor */
+    width: calc(620 * var(--u)); height: calc(520 * var(--u));
+    background: radial-gradient(closest-side, rgba(255,150,50,.85), rgba(255,120,30,.35) 45%, transparent);
+    mix-blend-mode: overlay;
+  }
+  .halo {                                   /* bright glow hugging the flame */
+    width: calc(var(--h) * 6 * var(--u)); height: calc(var(--h) * 6 * var(--u));
+    top: calc(var(--h) * -.55 * var(--u));
+    background: radial-gradient(closest-side, rgba(255,220,160,.75), rgba(255,170,80,.35) 28%, rgba(255,130,40,.1) 62%, transparent);
+    mix-blend-mode: color-dodge;
+  }
+  .core {                                   /* tight hot bloom right around the flame */
+    width: calc(var(--h) * 2.2 * var(--u)); height: calc(var(--h) * 2.6 * var(--u));
+    border-radius: 50%; transform: translate(-50%, -50%);
+    top: calc(var(--h) * -.5 * var(--u));
+    background: radial-gradient(closest-side, rgba(255,240,200,.9), rgba(255,190,90,.4) 45%, transparent);
+  }
+  .pool {                                   /* reflection on the polished stone */
+    width: calc(var(--h) * 9 * var(--u)); height: calc(var(--h) * 2.6 * var(--u));
+    top: calc(var(--h) * .55 * var(--u));
+    background: radial-gradient(closest-side, rgba(255,170,80,.75), rgba(255,120,40,.25) 55%, transparent);
+    mix-blend-mode: color-dodge;
+  }
+  .flame {
+    width: calc(var(--h) * .5 * var(--u)); height: calc(var(--h) * 1.2 * var(--u));
+    transform: translate(-50%, -100%);
+    transform-origin: 50% 100%;
+    border-radius: 50% 50% 50% 50% / 70% 70% 30% 30%;
+    background:
+      radial-gradient(ellipse 30% 22% at 50% 82%, rgba(120,150,255,.35), transparent),   /* faint blue at wick */
+      radial-gradient(ellipse 45% 60% at 50% 72%, #fff 0 25%, #fff4c8 42%, #ffcb5c 62%, rgba(255,120,20,.6) 80%, transparent 100%);
+    filter: blur(calc(.8 * var(--u)));
+    box-shadow: 0 0 calc(var(--h) * .5 * var(--u)) rgba(255,190,90,.75);
+  }
+
+  /* ---------- Fairy lights ---------- */
+  .bulb > * { border-radius: 50%; transform: translate(-50%, -50%); }
+  .bulb .glow {
+    width: calc(70 * var(--u)); height: calc(70 * var(--u));
+    background: radial-gradient(closest-side, rgba(255,190,100,.8), rgba(255,150,60,.25) 45%, transparent);
+    mix-blend-mode: color-dodge;
+    animation: twinkle var(--d) ease-in-out var(--dl) infinite;
+  }
+  .bulb .dot {
+    width: calc(var(--s, 11) * var(--u)); height: calc(var(--s, 11) * var(--u));
+    background: radial-gradient(closest-side, #fff 0 35%, #ffeab0 60%, rgba(255,200,110,0));
+    box-shadow: 0 0 calc(6 * var(--u)) calc(2 * var(--u)) rgba(255,225,160,.95), 0 0 calc(18 * var(--u)) calc(4 * var(--u)) rgba(255,170,70,.45);
+    animation: twinkle var(--d) ease-in-out var(--dl) infinite;
+  }
+  @keyframes twinkle {
+    0%, 100% { opacity: 1;   transform: translate(-50%, -50%) scale(1); }
+    45%      { opacity: .45; transform: translate(-50%, -50%) scale(.85); }
+    55%      { opacity: .5;  transform: translate(-50%, -50%) scale(.88); }
+  }
+
+  .vignette {
+    position: fixed; inset: 0; pointer-events: none; z-index: 4;
+    background: radial-gradient(ellipse 75% 70% at 50% 40%, transparent 55%, rgba(15,6,0,.55));
+  }
+
+
+  /* ---------- Rangoli ---------- */
+  /* A square drawing surface laid flat on the floor in the photo's perspective. */
+  .rangoli {
+    position: absolute;
+    left: calc(836 * var(--u)); top: calc(600 * var(--u));
+    width: calc(640 * var(--u)); height: calc(640 * var(--u));
+    transform: translate(-50%, -50%) perspective(calc(1500 * var(--u))) rotateX(54deg);
+    filter: brightness(.88) sepia(.1) saturate(1.05);     /* sit in the same dim, warm light */
+    pointer-events: none;
+  }
+  .rangoli canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .rangoli .r-line { filter: drop-shadow(0 calc(1.2 * var(--u)) calc(1 * var(--u)) rgba(0,0,0,.45)); }
+  .rangoli .r-fill { filter: drop-shadow(0 calc(.8 * var(--u)) calc(.8 * var(--u)) rgba(0,0,0,.3)); }
+  .r-corner { position: absolute; width: 0; height: 0; }   /* read back to map screen <-> floor */
+  .r-guides {                                /* the four quarters, shown while drawing freehand */
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    fill: none; stroke: rgba(255, 246, 228, .6); stroke-width: 5.5; stroke-linecap: round; stroke-dasharray: 0 40;
+    opacity: 0; transition: opacity .5s;
+  }
+  .rangoli.drawing .r-guides { opacity: 1; }
+  .r-hand {                                  /* soft shadow of the hand hovering over the floor */
+    position: absolute; width: 22%; height: 16%;
+    transform: translate(-20%, -10%);
+    border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(20,8,0,.38), rgba(20,8,0,.12) 60%, transparent);
+    filter: blur(calc(6 * var(--u)));
+    transition: opacity .4s;
+    opacity: 0;
+  }
+  #powder-stream { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; }
+
+  .rangoli .r-free { filter: drop-shadow(0 calc(1.2 * var(--u)) calc(1 * var(--u)) rgba(0,0,0,.45)); }
+  .rangoli .r-dots { opacity: 0; transition: opacity .4s; filter: drop-shadow(0 calc(1 * var(--u)) calc(1 * var(--u)) rgba(0,0,0,.45)); }
+  .rangoli.dots .r-dots { opacity: 1; }
+  .rangoli .r-band {                         /* where diyas can go; reaches 136 units past the square */
+    inset: auto; left: -13.28125%; top: -13.28125%; width: 126.5625%; height: 126.5625%;
+    opacity: 0; transition: opacity .4s; pointer-events: none;
+    filter: drop-shadow(0 calc(1 * var(--u)) calc(1 * var(--u)) rgba(0,0,0,.45));
+  }
+  .rangoli.placing .r-band { opacity: .75; }
+  .rangoli .r-greet {                        /* floor band y = -400..-80 (rangoli square is 0..1024) */
+    inset: auto; left: 0; top: -39.0625%; width: 100%; height: 31.25%;
+    filter: drop-shadow(0 calc(1 * var(--u)) calc(1 * var(--u)) rgba(0,0,0,.4));
+  }
+  /* Only one floor shows at a time, so a stencil and a freehand drawing never overlap. */
+  .rangoli canvas { transition: opacity .2s; }
+  .rangoli.floor-draw .r-fill, .rangoli.floor-draw .r-line,
+  .rangoli.floor-color .r-free, .rangoli.floor-color .r-dots { opacity: 0; }
+
+  /* Diyas set on the rangoli: the same light as the others, smaller, on a clay bowl */
+  .diya.placed { animation: diya-in .5s cubic-bezier(.34, 1.5, .64, 1); }
+  .diya.placed.lift { animation: diya-out .3s ease-in forwards; }
+  @keyframes diya-in { from { opacity: 0; transform: translateY(calc(var(--h) * -1.2 * var(--u))) scale(.6); } }
+  @keyframes diya-out { to { opacity: 0; transform: scale(.6); } }
+  .diya.placed .room { width: calc(var(--h) * 18 * var(--u)); height: calc(var(--h) * 13 * var(--u)); }
+  .diya.placed .bowl {                      /* the clay bowl from the photo (build_diya.py), wick at the light's origin */
+    mix-blend-mode: normal;
+    width: calc(var(--h) * 3.36 * var(--u)); height: calc(var(--h) * 2.11 * var(--u));
+    transform: translate(-40.4%, -50.8%);
+    background: url(diya-bowl.png) center / 100% 100% no-repeat;
+  }
+  /* Where the bowl rests on the powder: a tight dark contact line under the base,
+     inside a softer shadow spreading out on the floor (base is .8h below the wick). */
+  .diya.placed .shadow {
+    mix-blend-mode: multiply;
+    width: calc(var(--h) * 4.2 * var(--u)); height: calc(var(--h) * 1.5 * var(--u));
+    transform: translate(-45%, -50%); top: calc(var(--h) * .76 * var(--u));
+    border-radius: 50%;
+    background:
+      radial-gradient(closest-side, rgba(12, 4, 0, 1) 0 30%, rgba(12, 4, 0, .6) 42%, rgba(12, 4, 0, 0) 56%),
+      radial-gradient(closest-side, rgba(25, 10, 3, .75), rgba(25, 10, 3, .35) 55%, transparent);
+    filter: blur(calc(var(--h) * .08 * var(--u)));
+  }
+  .diya.ghost { opacity: .55; pointer-events: none; }
+  .diya.ghost .room, .diya.ghost .pool { display: none; }
+
+  /* ---------- Freehand layer ---------- */
+  .draw-layer { position: fixed; inset: 0; display: none; touch-action: none; z-index: 2; }
+  .draw-layer.on { display: block; }
+
+
+  /* ---------- Brass tray of powders, set down on the floor beside the outline ---------- */
+  /* Sits under the vignette, dimmed and warmed to the courtyard's light, with a
+     tight contact shadow at its base and a soft shadow spreading on the floor. */
+  .tray { position: fixed; z-index: 3; animation: tray-in .7s cubic-bezier(.2, .8, .3, 1); }
+  .tray[hidden] { display: none; }
+  @keyframes tray-in { from { opacity: 0; transform: translateY(-8px); } }
+  .tray-body { position: relative; }
+  .tray-body::before {                       /* soft shadow on the floor, flattened by perspective */
+    content: ""; position: absolute; left: -3%; right: -6%; top: 58%; bottom: -9%;
+    border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(8, 3, 0, .75), rgba(8, 3, 0, .35) 60%, transparent);
+    filter: blur(5px); transform: translate(3%, 4%);
+  }
+  .tray img {
+    position: relative; display: block; width: 100%;
+    filter: brightness(1.02) contrast(1.06) saturate(1.3)
+            drop-shadow(0 1.5px 1px rgba(0, 0, 0, .75)) drop-shadow(0 4px 5px rgba(8, 3, 0, .45));
+  }
+  .tray-body::after {                        /* courtyard light: warm on the rim, shade on the front wall */
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(180deg, rgba(255, 180, 90, .2), rgba(255, 160, 70, .04) 50%, rgba(10, 4, 0, .22));
+    mix-blend-mode: soft-light;
+    -webkit-mask: url(tray.webp) center / 100% 100%; mask: url(tray.webp) center / 100% 100%;
+  }
+  .powder {
+    position: absolute; z-index: 1; width: 27%; aspect-ratio: 1.45; transform: translate(-50%, -50%);
+    border: 0; border-radius: 50%; background: transparent; cursor: pointer;
+    transition: box-shadow .2s, background .2s, transform .2s;
+  }
+  .powder::before {                         /* tint each heap to the exact colour it pours */
+    content: ""; position: absolute; inset: 8% 10%; border-radius: 50%;
+    background: radial-gradient(closest-side, var(--c) 0 50%, transparent);
+    mix-blend-mode: color; opacity: .7;
+  }
+  .powder:hover { background: radial-gradient(closest-side, rgba(255, 240, 210, .2), transparent); transform: translate(-50%, -54%); }
+  .powder[aria-pressed="true"] { box-shadow: 0 0 0 1.5px rgba(255, 243, 220, .85), 0 0 10px 2px var(--c); }
+  .powder:focus-visible { outline: 2px solid #ffc46b; outline-offset: 2px; }
+  .tray-hint {                               /* one line right under the tray (help-text style, below) */
+    position: fixed; z-index: 5; margin: 0; white-space: nowrap; transform: translateX(-50%);
+    animation: hint-in .6s .2s ease-out both;
+  }
+  .quarter-hint {                            /* on the floor, just below the quarter square */
+    position: fixed; z-index: 5; margin: 0; white-space: nowrap; pointer-events: none;
+    transform: translate(-50%, 10px);
+    animation: hint-in .5s ease-out both;
+  }
+  .quarter-hint[hidden] { display: none; }
+  @keyframes hint-in { from { opacity: 0; } }
+  .tray-hint[hidden] { display: none; }
+  .tray-hint.nudge { animation: nudge .45s; }
+
+  /* ---------- Controls at the foot of the stairs ---------- */
+  /* Plain text on the floor: easy to find, never louder than the rangoli. */
+  .floor-bar {
+    --sw: max(100vw, 100vh * 1672 / 941);   /* stage width; the bar sits at y = 214 in source pixels */
+    position: fixed; z-index: 5; left: 50%; top: calc(50vh - var(--sw) * 941 / 1672 / 2 + var(--sw) * 214 / 1672);
+    transform: translateX(-50%);
+    display: flex; align-items: center; max-width: calc(100vw - 24px);
+    color: rgba(255, 234, 206, .72); font: 500 13px/1.2 system-ui, -apple-system, "Segoe UI", sans-serif;
+    animation: bar-in .4s ease-out;
+  }
+  .floor-bar[hidden] { display: none; }
+  @keyframes bar-in { from { opacity: 0; } }
+  .floor-bar { gap: 8px; }
+  .text-btn, .speed, .dots-toggle {          /* subtle pill buttons */
+    border-radius: 999px; background: rgba(255, 238, 215, .07); border: 1px solid rgba(255, 228, 195, .16);
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+    transition: color .2s, background .2s, border-color .2s;
+  }
+  .text-btn:hover, .speed:hover, .dots-toggle:hover { background: rgba(255, 238, 215, .13); border-color: rgba(255, 228, 195, .3); }
+  .bar-hint { margin: 0; padding: 6px 4px 6px 0; white-space: nowrap; }
+  .bar-hint.nudge { animation: nudge .45s; }
+  @keyframes nudge { 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+  .text-btn {
+    padding: 5px 13px; color: inherit; font: inherit;
+    cursor: pointer; white-space: nowrap;
+  }
+  .text-btn:hover { color: #fff; }
+  .text-btn:active { transform: scale(.96); }
+  .text-btn:disabled { opacity: .4; cursor: default; transform: none; }
+  .text-btn:disabled:hover { color: inherit; background: rgba(255, 238, 215, .07); border-color: rgba(255, 228, 195, .16); }
+  .text-btn:focus-visible { outline: 1.5px solid rgba(255, 196, 107, .8); outline-offset: 0; border-radius: 6px; }
+
+  .speed { display: flex; align-items: center; gap: 8px; padding: 5px 13px; white-space: nowrap; }
+  .speed b { min-width: 2.4em; font-weight: 600; color: rgba(255, 214, 150, .85); }
+  .speed input { width: 76px; height: 16px; margin: 0; background: transparent; cursor: pointer; -webkit-appearance: none; appearance: none; }
+  .speed input::-webkit-slider-runnable-track { height: 2px; border-radius: 1px; background: rgba(255, 228, 190, .35); }
+  .speed input::-moz-range-track { height: 2px; border-radius: 1px; background: rgba(255, 228, 190, .35); }
+  .speed input::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 11px; height: 11px; margin-top: -4.5px; border-radius: 50%;
+    background: #fff1da; box-shadow: 0 1px 3px rgba(0,0,0,.6); transition: transform .15s;
+  }
+  .speed input::-moz-range-thumb { width: 11px; height: 11px; border: 0; border-radius: 50%; background: #fff1da; }
+  .speed input:hover::-webkit-slider-thumb, .speed input:active::-webkit-slider-thumb { transform: scale(1.3); }
+  .speed input:focus-visible { outline: 1.5px solid rgba(255, 196, 107, .8); outline-offset: 3px; border-radius: 4px; }
+
+  .dots-toggle { display: flex; align-items: center; gap: 8px; padding: 5px 13px; cursor: pointer; white-space: nowrap; }
+  .dots-toggle input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  .switch {                                  /* light, cream toggle */
+    position: relative; width: 28px; height: 16px; border-radius: 999px; flex: none;
+    background: rgba(255, 240, 215, .2); box-shadow: inset 0 0 0 1px rgba(255, 240, 215, .35), 0 1px 3px rgba(0,0,0,.4);
+    transition: background .25s;
+  }
+  .switch::after {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%;
+    background: #fff6e6; box-shadow: 0 1px 2px rgba(0,0,0,.35);
+    transition: transform .3s cubic-bezier(.34, 1.56, .64, 1);
+  }
+  .dots-toggle input:checked + .switch { background: #f5e2bf; }
+  .dots-toggle input:checked + .switch::after { transform: translateX(12px); background: #fff; }
+  .dots-toggle input:focus-visible + .switch { outline: 1.5px solid #ffc46b; outline-offset: 2px; }
+
+  /* ---------- The two festive buttons (bottom right) ---------- */
+  .modes { position: fixed; right: 20px; bottom: 20px; display: flex; align-items: center; gap: 12px; z-index: 6; }
+  .diya-corner { position: fixed; left: 20px; bottom: 20px; z-index: 6; }
+  .diya-tip { left: 0; bottom: calc(100% + 10px); transform: translateY(4px); max-width: calc(100vw - 40px); white-space: normal; width: max-content; }
+  .diya-btn:hover + .diya-tip, .diya-btn:focus-visible + .diya-tip, .diya-tip.show { opacity: 1; transform: translateY(0); }
+
+  /* ---------- Top-right icon buttons: download, music ---------- */
+  .corner-tools { position: fixed; top: 20px; right: 20px; z-index: 6; display: flex; gap: 10px; }
+  .tool-btn {
+    position: relative; width: 44px; height: 44px; padding: 0; border-radius: 50%; cursor: pointer;
+    display: grid; place-items: center; color: #ffe9c7;
+    background: linear-gradient(140deg, rgba(74, 36, 10, .7), rgba(30, 14, 5, .66));
+    border: 1px solid rgba(255, 196, 110, .3);
+    box-shadow: 0 8px 20px rgba(0,0,0,.35), inset 0 1px 0 rgba(255, 228, 180, .12);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    transition: transform .25s cubic-bezier(.34, 1.56, .64, 1), border-color .25s, box-shadow .25s, color .25s;
+  }
+  .tool-btn svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; overflow: visible; }
+  .tool-btn:hover { transform: translateY(-2px) scale(1.06); border-color: rgba(255, 206, 128, .7); color: #fff6e6; box-shadow: 0 12px 26px rgba(0,0,0,.42), 0 0 18px rgba(255, 170, 60, .35); }
+  .tool-btn:active { transform: scale(.94); }
+  .tool-btn:focus-visible { outline: 2px solid #ffc46b; outline-offset: 3px; }
+  /* All help text: plain, soft cream italic on the scene, no box, no shadow.
+     Dimmed so it doesn't compete with the rangoli, still clear on the dark floor. */
+  .tool-btn::after, .diya-tip, .bar-hint, .tray-hint, .quarter-hint {
+    color: rgba(255, 228, 194, .74); font: italic 500 14px/1.3 "Iowan Old Style", Georgia, serif;
+  }
+  .tool-btn::after, .diya-tip {              /* hover hints */
+    position: absolute; margin: 0; white-space: nowrap; pointer-events: none;
+    opacity: 0; transition: opacity .2s, transform .2s;
+  }
+  .tool-btn::after { content: attr(data-tip); top: calc(100% + 10px); right: 0; transform: translateY(-4px); }
+  .tool-btn:hover::after, .tool-btn:focus-visible::after { opacity: 1; transform: translateY(0); transition-delay: .25s; }
+  /* download: the arrow drops on hover, a spinner while saving, a tick when done */
+  #download-btn .arrow { transition: transform .3s cubic-bezier(.34, 1.56, .64, 1); }
+  #download-btn:hover .arrow { animation: drop .9s ease-in-out infinite; }
+  @keyframes drop { 50% { transform: translateY(2.5px); } }
+  #download-btn .tick { opacity: 0; stroke-dasharray: 14; stroke-dashoffset: 14; }
+  #download-btn .spin {
+    position: absolute; inset: 9px; border-radius: 50%; opacity: 0;
+    border: 2px solid rgba(255, 220, 160, .25); border-top-color: #ffd28a;
+  }
+  #download-btn.busy .spin { opacity: 1; animation: spin .8s linear infinite; }
+  #download-btn.busy svg { opacity: 0; }
+  #download-btn.done .arrow { opacity: 0; }
+  #download-btn.done .tick { opacity: 1; stroke-dashoffset: 0; transition: stroke-dashoffset .4s ease-out; }
+  #download-btn.done { border-color: #ffc46b; }
+  /* music: waves pulse while it's on, a cross when it's off */
+  #music-btn .speaker { fill: currentColor; stroke-width: 1.2; }
+  #music-btn .wave, #music-btn .mute { transition: opacity .25s; }
+  #music-btn .wave { opacity: 0; }
+  #music-btn[aria-pressed="true"] .wave { opacity: 1; animation: wave 1.6s ease-in-out infinite; }
+  #music-btn[aria-pressed="true"] .w2 { animation-delay: .25s; }
+  #music-btn[aria-pressed="true"] .mute { opacity: 0; }
+  #music-btn .mute { opacity: .8; }
+  #music-btn:hover .speaker { animation: nudge-speaker .5s ease-in-out; }
+  @keyframes wave { 50% { opacity: .35; } }
+  @keyframes nudge-speaker { 30% { transform: rotate(-8deg); } 70% { transform: rotate(6deg); } }
+  #music-btn .speaker { transform-origin: 8px 12px; transform-box: view-box; }
+  #music-btn[aria-pressed="true"] { border-color: #ffc46b; color: #fff6e6; box-shadow: 0 8px 20px rgba(0,0,0,.35), 0 0 16px rgba(255, 170, 60, .35); }
+  body:has(.diya-btn[aria-pressed="true"]) .modes .mode-btn { opacity: .6; }
+  .mode-btn {
+    position: relative; display: flex; align-items: center; gap: 9px;
+    padding: 12px 22px; border-radius: 999px; cursor: pointer;
+    color: #ffe9c7; font: 600 19px/1 "Cormorant Garamond", Georgia, serif;
+    background: linear-gradient(140deg, rgba(74, 36, 10, .82), rgba(30, 14, 5, .78));
+    border: 1px solid rgba(255, 196, 110, .38);
+    box-shadow: 0 10px 26px rgba(0,0,0,.4), 0 0 16px rgba(255, 166, 60, .14), inset 0 1px 0 rgba(255, 228, 180, .14);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    transition: transform .25s cubic-bezier(.34, 1.56, .64, 1), box-shadow .25s, border-color .25s, background .25s, color .25s, opacity .25s;
+  }
+  .mode-btn::before {                        /* a slow golden shimmer passing over now and then */
+    content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    background: linear-gradient(105deg, transparent 38%, rgba(255, 226, 160, .2) 50%, transparent 62%) no-repeat;
+    background-size: 260% 100%; background-position: 160% 0;
+    animation: shimmer 7s ease-in-out infinite var(--shine, 0s);
+  }
+  @keyframes shimmer { 0%, 72% { background-position: 160% 0; } 100% { background-position: -60% 0; } }
+  .mode-btn:hover { transform: translateY(-2px); border-color: rgba(255, 206, 128, .65); box-shadow: 0 14px 30px rgba(0,0,0,.45), 0 0 22px rgba(255, 170, 60, .3), inset 0 1px 0 rgba(255, 228, 180, .18); }
+  .mode-btn:active { transform: translateY(0) scale(.97); }
+  /* The chosen mode lights up like a diya; the other steps back. */
+  .mode-btn[aria-pressed="true"] {
+    color: #2b1304; border-color: #ffd58a; transform: scale(1.05);
+    background: linear-gradient(140deg, #ffd88a, #f2a33a 55%, #d9741c);
+    box-shadow: 0 10px 26px rgba(0,0,0,.45), 0 0 0 3px rgba(255, 196, 107, .22), 0 0 28px rgba(255, 166, 50, .55), inset 0 1px 0 rgba(255, 246, 220, .7);
+  }
+  .mode-btn[aria-pressed="true"]:hover { transform: scale(1.05) translateY(-2px); }
+  .mode-btn[aria-pressed="true"] .spark { background: #fff6dc; }
+  .mode-btn[aria-pressed="true"] svg circle[fill] { mix-blend-mode: normal; }
+  .modes:has([aria-pressed="true"]) .mode-btn:not([aria-pressed="true"]) {
+    opacity: .6; border-color: rgba(255, 196, 110, .2); box-shadow: 0 6px 18px rgba(0,0,0,.35);
+  }
+  .modes:has([aria-pressed="true"]) .mode-btn:not([aria-pressed="true"]) .spark,
+  .modes:has([aria-pressed="true"]) .mode-btn:not([aria-pressed="true"])::before { animation: none; opacity: 0; }
+  .modes:has([aria-pressed="true"]) .mode-btn:not([aria-pressed="true"]):hover { opacity: .9; }
+  .mode-btn:focus-visible { outline: 2px solid #ffc46b; outline-offset: 3px; }
+  .mode-btn svg { width: 20px; height: 20px; flex: none; }
+  .mode-btn svg circle:not([fill]), .mode-btn svg path { fill: none; stroke: currentColor; stroke-width: 1.4; }
+  .mode-btn svg .dot { fill: currentColor; stroke: none; }
+  .diya-btn .lamp { fill: currentColor; stroke: none; opacity: .85; }
+  .diya-btn .fire { fill: #ffb547; stroke: none; }
+  .diya-btn[aria-disabled="true"] { opacity: .38 !important; cursor: not-allowed; filter: saturate(.4); }
+  .diya-btn[aria-disabled="true"] .spark, .diya-btn[aria-disabled="true"]::before { animation: none; opacity: 0; }
+  .diya-btn[aria-disabled="true"]:hover { transform: none; }
+  .diya-btn.ready { animation: ready 1.2s ease-out 2; }   /* a soft glow when it becomes available */
+  @keyframes ready { 40% { box-shadow: 0 10px 26px rgba(0,0,0,.4), 0 0 0 4px rgba(255, 196, 107, .35), 0 0 30px rgba(255, 170, 60, .6); } }
+  .mode-btn svg circle[fill] { mix-blend-mode: screen; opacity: .9; }
+  .spark {                                   /* tiny four-point twinkles on the button edge */
+    position: absolute; left: var(--x); top: var(--y); width: var(--s, 8px); height: var(--s, 8px);
+    background: #ffe7ad; pointer-events: none; opacity: 0;
+    clip-path: polygon(50% 0, 60% 40%, 100% 50%, 60% 60%, 50% 100%, 40% 60%, 0 50%, 40% 40%);
+    filter: drop-shadow(0 0 3px #ffb347);
+    animation: sparkle 3.2s ease-in-out infinite var(--d, 0s);
+  }
+  @keyframes sparkle { 0%, 100% { opacity: 0; transform: scale(.2) rotate(0); } 45%, 55% { opacity: .95; transform: scale(1) rotate(45deg); } }
+
+  /* ---------- Circular stencil picker, fans out of "Color a rangoli" ---------- */
+  .fan { position: fixed; width: 0; height: 0; z-index: 5; pointer-events: none; }
+  .fan::before {                             /* round glass disc behind the choices */
+    content: ""; position: absolute; left: -200px; top: -200px; width: 400px; height: 400px; border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(36, 17, 6, .55), rgba(36, 17, 6, .78) 96%, transparent);
+    box-shadow: inset 0 0 0 1px rgba(255, 200, 120, .28), inset 0 0 40px rgba(255, 170, 70, .08), 0 14px 40px rgba(0,0,0,.4);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    transform: scale(0); transition: transform .45s cubic-bezier(.34, 1.4, .64, 1);
+  }
+  .fan-ring { position: absolute; left: -170px; top: -170px; width: 340px; height: 340px; overflow: visible; }
+  .fan-ring circle {
+    fill: none; stroke: rgba(255, 224, 170, .75); stroke-width: 2.2; stroke-linecap: round; stroke-dasharray: .1 10;
+    opacity: 0; transform: rotate(-90deg); transition: opacity .3s, transform .8s cubic-bezier(.2, .8, .3, 1);
+  }
+  .fan-item {
+    --r: 150px;
+    position: absolute; left: 0; top: 0; padding: 0; border: 0; background: none; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    color: #ffe9c7; font: italic 600 14px/1 "Iowan Old Style", Georgia, serif;
+    translate: -50% -50%;
+    transform: rotate(var(--a)) translate(0) rotate(calc(-1 * var(--a))) scale(.2);
+    opacity: 0; pointer-events: none;
+    transition: transform .5s cubic-bezier(.34, 1.56, .64, 1) var(--delay, 0s), opacity .25s var(--delay, 0s);
+  }
+  .medal {
+    position: relative; display: block; width: 74px; height: 74px; border-radius: 50%;
+    box-shadow: 0 0 0 2px rgba(255, 210, 140, .35), 0 8px 20px rgba(0,0,0,.45);
+    transition: transform .3s cubic-bezier(.34, 1.56, .64, 1), box-shadow .3s;
+  }
+  .medal img {
+    width: 100%; height: 100%; border-radius: 50%; display: block;
+    background: #fff; filter: invert(1) sepia(.35) brightness(.95);   /* white powder lines on dark */
+    transform: rotate(-120deg); transition: transform .7s cubic-bezier(.2, .8, .3, 1) var(--delay, 0s);
+  }
+  .medal::after {                            /* ripple when chosen */
+    content: ""; position: absolute; inset: -2px; border-radius: 50%; border: 2px solid #ffd28a; opacity: 0;
+  }
+  .fan.open::before { transform: scale(1); }
+  .fan.open .fan-ring circle { opacity: 1; transform: rotate(0); }
+  .fan.open .fan-item {
+    transform: rotate(var(--a)) translate(var(--r)) rotate(calc(-1 * var(--a))) scale(1);
+    opacity: 1; pointer-events: auto;
+  }
+  .fan.open .medal img { transform: rotate(0); }
+  .fan-item:hover .medal { transform: translateY(-4px) scale(1.07); box-shadow: 0 0 0 2px #ffc46b, 0 0 22px rgba(255, 180, 80, .55), 0 12px 24px rgba(0,0,0,.5); }
+  .fan-item:hover .medal img { animation: spin 14s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .fan-item:active .medal { transform: scale(.94); }
+  .fan-item[aria-pressed="true"] .medal { box-shadow: 0 0 0 2px #ffc46b, 0 0 18px rgba(255, 180, 80, .5), 0 8px 20px rgba(0,0,0,.45); }
+  .fan-item.chosen .medal::after { animation: ripple .55s ease-out; }
+  @keyframes ripple { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(1.6); } }
+  .fan-item:focus-visible { outline: none; }
+  .fan-item:focus-visible .medal { box-shadow: 0 0 0 3px #ffc46b; }
+
+  @media (max-width: 640px) {
+    .floor-bar .bar-hint {                   /* sits just above the buttons, so they stay put */
+      position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+      width: max-content; max-width: calc(100vw - 24px); padding: 0; text-align: center; white-space: normal;
+    }
+  }
+  @media (max-width: 640px) {
+    .diya-btn { padding: 12px 13px; }
+    .diya-btn .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  }
+  @media (max-width: 520px) {
+    .modes { left: 72px; right: 12px; bottom: 12px; }
+    .diya-corner { left: 12px; bottom: 12px; }
+    .mode-btn { flex: 1; justify-content: center; padding: 11px 8px; font-size: 15px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .mode-btn::before, .spark, #download-btn:hover .arrow, #music-btn .wave { animation: none; }
+    .fan-item, .fan::before, .medal img { transition-duration: .01s; }
+  }
+
+  @media (prefers-reduced-motion: reduce) { .bulb > * { animation: none; } }
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <img class="photo" src="courtyard-16x9.webp" alt="Stone courtyard at dusk with lit diyas, a brass urli of flowers and fairy lights">
+
+  <!-- Rangoli drawn on the floor (under the diya light so it gets lit too) -->
+  <div class="rangoli" id="rangoli">
+    <!-- two floors: the stencil you colour, and your own freehand drawing -->
+    <canvas class="r-fill"></canvas>
+    <canvas class="r-line"></canvas>
+    <canvas class="r-dots"></canvas>
+    <canvas class="r-free"></canvas>
+    <canvas class="r-band"></canvas>
+    <!-- शुभ दीपावली in powder, on the floor just above the rangoli; always there -->
+    <canvas class="r-greet" aria-label="Shubh Deepawali" role="img"></canvas>
+    <!-- quarter guides: dots on the same 40px grid as "Add dots" -->
+    <svg class="r-guides" viewBox="0 0 1024 1024" aria-hidden="true">
+      <rect x="32" y="32" width="960" height="960"/>
+      <line x1="512" y1="32" x2="512" y2="992"/><line x1="32" y1="512" x2="992" y2="512"/>
+    </svg>
+    <div class="r-hand"></div>
+    <i class="r-corner" style="left:0;top:0"></i><i class="r-corner" style="left:100%;top:0"></i>
+    <i class="r-corner" style="left:100%;top:100%"></i><i class="r-corner" style="left:0;top:100%"></i>
+  </div>
+
+  <!-- Diyas you set on the rangoli go here, so their light falls on the scene too -->
+  <div id="placed-diyas"></div>
+
+  <!-- Diyas: (x, y) is the wick base in source pixels, h is flame height -->
+  <div class="light diya" style="--x:359; --y:208; --h:29"><div class="room"></div><div class="pool"></div><div class="halo"></div><div class="core"></div><div class="flame"></div></div>
+  <div class="light diya" style="--x:1349; --y:227; --h:28"><div class="room"></div><div class="pool"></div><div class="halo"></div><div class="core"></div><div class="flame"></div></div>
+  <div class="light diya" style="--x:71; --y:386; --h:40"><div class="room"></div><div class="pool"></div><div class="halo"></div><div class="core"></div><div class="flame"></div></div>
+
+  <div id="bulbs"></div>
+</div>
+<canvas id="powder-stream"></canvas>
+<div class="tray" id="tray" hidden>
+  <div class="tray-body"><img src="tray.webp" alt="Brass tray of rangoli powders"></div>
+</div>
+<p class="tray-hint" id="tray-hint" hidden>Tap a colour, then fill the rangoli</p>
+
+<div class="vignette"></div>
+
+<div class="draw-layer" id="draw-layer"></div>
+
+<!-- Controls, set at the foot of the stairs -->
+<p class="quarter-hint" id="quarter-hint" hidden>Draw in any quarter, the other three follow</p>
+<div class="floor-bar" id="diya-bar" role="toolbar" aria-label="Placing diyas" hidden>
+  <p class="bar-hint">Tap the rangoli to set a diya, tap one to lift it</p>
+  <button class="text-btn" data-act="clear-diyas">Clear diyas</button>
+  <button class="text-btn" data-act="diyas-done">Done</button>
+</div>
+<div class="floor-bar" id="draw-bar" role="toolbar" aria-label="Drawing" hidden>
+  <label class="dots-toggle"><input type="checkbox" id="dots-toggle" role="switch"><span class="switch" aria-hidden="true"></span>Add dots</label>
+  <button class="text-btn" data-act="undo" disabled aria-keyshortcuts="Control+Z Meta+Z">Undo</button>
+  <button class="text-btn" data-act="clear">Clear</button>
+  <button class="text-btn" data-act="done">Done</button>
+</div>
+<div class="floor-bar" id="color-bar" role="toolbar" aria-label="Colouring" hidden>
+  <button class="text-btn" data-act="clear">Clear</button>
+  <label class="speed">Speed <input type="range" id="speed" min="0" max="8" step="1" value="5" aria-valuetext="2×"><b id="speed-val">2×</b></label>
+</div>
+
+<!-- Stencils fan out in a circle from the "Color a rangoli" button -->
+<div class="fan" id="fan" role="group" aria-label="Choose a rangoli">
+  <svg class="fan-ring" viewBox="-170 -170 340 340" aria-hidden="true"><circle r="150"/></svg>
+  <button class="fan-item" data-stencil="lotus" aria-pressed="false" tabindex="-1" style="--a:-142deg; --delay:.04s"><span class="medal"><img src="stencils/lotus.webp" alt=""></span>Lotus</button>
+  <button class="fan-item" data-stencil="peacock" aria-pressed="false" tabindex="-1" style="--a:-108deg; --delay:.1s"><span class="medal"><img src="stencils/peacock.webp" alt=""></span>Peacock</button>
+  <button class="fan-item" data-stencil="star" aria-pressed="false" tabindex="-1" style="--a:-74deg; --delay:.16s"><span class="medal"><img src="stencils/star.webp" alt=""></span>Star</button>
+</div>
+
+<!-- Top right: save a picture, music on/off -->
+<div class="corner-tools">
+  <button class="tool-btn" id="download-btn" aria-label="Download your rangoli as a picture" data-tip="Save your rangoli as a picture">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <g class="arrow"><path d="M12 4v10"/><path d="M7.5 10.5 12 15l4.5-4.5"/></g>
+      <path d="M5 16.5v2a1.5 1.5 0 0 0 1.5 1.5h11a1.5 1.5 0 0 0 1.5-1.5v-2"/>
+      <path class="tick" d="m7.5 12.5 3 3 6-6.5"/>
+    </svg>
+    <span class="spin" aria-hidden="true"></span>
+  </button>
+  <button class="tool-btn" id="music-btn" aria-pressed="false" aria-label="Play festive music" data-tip="Play festive music">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path class="speaker" d="M4 9.5h3l4.5-4v13L7 14.5H4z"/>
+      <path class="wave w1" d="M15 9.5a3.5 3.5 0 0 1 0 5"/>
+      <path class="wave w2" d="M17.5 7a7 7 0 0 1 0 10"/>
+      <path class="mute" d="m15.5 9.5 5 5m0-5-5 5"/>
+    </svg>
+  </button>
+</div>
+<!-- Festive track: set src to an audio file (e.g. src="music/diwali.mp3") and the button will play it -->
+<audio id="music" loop preload="none"></audio>
+
+<div class="diya-corner">
+  <button class="mode-btn diya-btn" data-mode="diya" aria-pressed="false" aria-disabled="true" aria-describedby="diya-tip" style="--shine:5s">
+    <i class="spark" style="--x:50%; --y:-6px; --d:.9s"></i>
+    <svg viewBox="0 0 20 20" aria-hidden="true"><path class="lamp" d="M2.5 11.5h15c-.8 3.4-3.8 5.5-7.5 5.5s-6.7-2.1-7.5-5.5z"/><path class="fire" d="M10 3.2c1.6 1.9 2.3 3.3 2.3 4.6A2.3 2.3 0 0 1 10 10.1a2.3 2.3 0 0 1-2.3-2.3c0-1.3.7-2.7 2.3-4.6z"/></svg>
+    <span class="label">Add diyas</span></button>
+  <p class="diya-tip" id="diya-tip">Make your rangoli first, then light the diyas</p>
+</div>
+
+<div class="modes">
+  <button class="mode-btn" data-mode="draw" aria-pressed="false" style="--shine:0s">
+    <i class="spark" style="--x:12%; --y:-5px; --d:.4s"></i><i class="spark" style="--x:88%; --y:70%; --s:6px; --d:1.9s"></i>
+    Draw a rangoli</button>
+  <button class="mode-btn" data-mode="color" aria-pressed="false" aria-expanded="false" aria-controls="fan" style="--shine:3.5s">
+    <i class="spark" style="--x:80%; --y:-5px; --d:1.2s"></i><i class="spark" style="--x:6%; --y:72%; --s:6px; --d:2.6s"></i>
+    Color a rangoli</button>
+</div>
+
+<script>
+  // Fairy bulb positions (source pixels), found from the bright spots in the photo.
+  const BULBS = [
+    // string down the left wall
+    [30,36], [39,54], [79,56], [47,94,14], [61,103], [74,103], [11,132], [24,137], [85,152],
+    [56,166], [78,180], [49,188], [29,192], [31,295], [42,335,14],
+    // string beside the left plant
+    [380,8], [358,45], [382,77], [370,118],
+    // right wall
+    [1330,73], [1318,109], [1642,84], [1652,157]
+  ];
+  const bulbHost = document.getElementById('bulbs');
+  for (const [x, y, s] of BULBS) {
+    const b = document.createElement('div');
+    b.className = 'light bulb';
+    b.style.cssText = `--x:${x};--y:${y};--d:${(1.8 + Math.random() * 2.6).toFixed(2)}s;--dl:-${(Math.random() * 4).toFixed(2)}s` + (s ? `;--s:${s}` : '');
+    b.innerHTML = '<div class="glow"></div><div class="dot"></div>';
+    bulbHost.appendChild(b);
+  }
+
+  // Diya flicker: layered sines + filtered random walk + the occasional draft of air,
+  // so no two flames move in sync and nothing loops visibly.
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const track = el => ({
+    el,
+    flame: el.querySelector('.flame'),
+    halo: el.querySelector('.halo'),
+    room: el.querySelector('.room'),
+    core: el.querySelector('.core'),
+    pool: el.querySelector('.pool'),
+    p: [Math.random() * 6.3, Math.random() * 6.3, Math.random() * 6.3],
+    walk: 0, sway: 0, gust: 0, nextGust: performance.now() + 2000 + Math.random() * 6000,
+  });
+  const diyas = [...document.querySelectorAll('.diya')].map(track);
+  // Diyas placed on the rangoli (rangoli.js) flicker with the same code.
+  window.diyaFlicker = {
+    add: el => diyas.push(track(el)),
+    remove: el => { const i = diyas.findIndex(d => d.el === el); if (i >= 0) diyas.splice(i, 1); },
+  };
+
+  function frame(now) {
+    const t = now / 1000;
+    for (const d of diyas) {
+      d.walk = d.walk * 0.9 + (Math.random() - 0.5) * 0.06;
+      if (now > d.nextGust) { d.gust = 0.6 + Math.random() * 0.4; d.nextGust = now + 3000 + Math.random() * 7000; }
+      d.gust *= 0.94;
+
+      const i = 1
+        + 0.05 * Math.sin(t * 1.3 + d.p[0])
+        + 0.04 * Math.sin(t * 3.7 + d.p[1])
+        + 0.03 * Math.sin(t * 9.1 + d.p[2])
+        + d.walk - d.gust * 0.22;
+
+      const swayTarget = 3 * Math.sin(t * 0.9 + d.p[1]) + 2.5 * Math.sin(t * 2.3 + d.p[0]) + d.gust * 14 * Math.sin(t * 11 + d.p[2]);
+      d.sway += (swayTarget - d.sway) * 0.15;
+
+      const sy = 0.9 + (i - 0.85) * 0.9;
+      const sx = 1 - (i - 1) * 0.4;
+      d.flame.style.transform = `translate(-50%,-100%) skewX(${d.sway.toFixed(2)}deg) scale(${sx.toFixed(3)},${sy.toFixed(3)})`;
+      d.flame.style.opacity = Math.min(1, 0.75 + (i - 0.8));
+      d.halo.style.opacity = Math.max(0.3, Math.min(1, 0.55 + (i - 0.9) * 2.2));
+      d.core.style.opacity = Math.max(0.5, Math.min(1, 0.8 + (i - 1) * 1.8));
+      d.room.style.opacity = Math.max(0.4, Math.min(1, 0.7 + (i - 1) * 1.6));
+      d.pool.style.opacity = Math.max(0.3, Math.min(1, 0.65 + (i - 1) * 2));
+    }
+    if (!reduce) requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+</script>
+<script src="stencils/stencils.js"></script>
+<script src="rangoli.js"></script>
+<script src="corner.js"></script>
+</body>
+</html>
