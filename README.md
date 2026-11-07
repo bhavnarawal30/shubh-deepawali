@@ -1,5 +1,7 @@
 # Shubh Deepawali
 
+Live at **https://shubh-deepawali-gilt.vercel.app**: every push to `main` deploys automatically.
+
 A Diwali courtyard at dusk with glowing diyas and fairy lights, where you can:
 
 - **Draw a rangoli**: freehand white powder, mirrored into all four quarters, with optional guide dots and undo.
