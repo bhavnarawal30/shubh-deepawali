@@ -12,3 +12,7 @@ courtyard.webp
 courtyard-wide.webp
 extend.py
 extra-lights.json
+
+# the icon artwork and the script that makes the icon sizes from it
+icons/source.webp
+build_icon.py
