@@ -1,11 +1,13 @@
 // Rangoli on the floor, made of powder trickled from the fingers.
-//  - Draw a rangoli: freehand white powder; whatever is drawn in one quarter is
+// "Draw a rangoli" offers two ways to make one, then "Color a rangoli" fills it:
+//  - Your own: freehand white powder; whatever is drawn in one quarter is
 //    mirrored into the other three as it goes.
-//  - Color a rangoli: a stencil is outlined in white, inside out; then a tray of
-//    coloured powders appears and you fill the shapes yourself by tapping them.
+//  - Templates: a stencil is outlined in white, inside out, by itself.
 //    Data comes from stencils/stencils.js.
-//  - Add diyas: once a rangoli is finished, set small lit diyas on it.
-// Each mode has its own floor (canvases), so the two never draw over each other.
+//  - Color a rangoli (unlocked once the rangoli is made): a tray of coloured
+//    powders appears and you fill the shapes by tapping them, on either kind.
+//  - Add diyas: once a rangoli is made, set small lit diyas on it.
+// One rangoli is on the floor at a time; starting a new one replaces it.
 (() => {
   const STENCILS = window.STENCILS;
   const N = 1024;                      // drawing resolution (matches the stencil data)
@@ -21,9 +23,9 @@
   const layer = document.getElementById('draw-layer');
   const streamCv = document.getElementById('powder-stream');
   for (const c of [fillCv, lineCv, freeCv]) c.width = c.height = N;
-  const fctx = fillCv.getContext('2d');      // colour floor: powder fill
-  const lctx = lineCv.getContext('2d');      // colour floor: white outline
-  const dctx = freeCv.getContext('2d');      // draw floor: your freehand lines
+  const fctx = fillCv.getContext('2d');      // coloured powder, under either kind of outline
+  const lctx = lineCv.getContext('2d');      // a template's white outline
+  const dctx = freeCv.getContext('2d');      // your own freehand lines
   const sctx = streamCv.getContext('2d');
 
   const gauss = () => (Math.random() + Math.random() + Math.random() + Math.random() - 2) * 1.73;
@@ -80,9 +82,10 @@
   }
 
   // ---------- Drawing state ----------
-  let job = null;                      // the stencil currently being drawn
-  let floor = 'color';                 // which floor is on show: 'draw' | 'color'
-  const finished = { draw: false, color: false };   // ready for diyas
+  let job = null;                      // the template currently being drawn
+  let kind = null;                     // what's on the floor: 'free' | 'template' | null
+  let made = false;                    // the rangoli is finished: colouring and diyas unlock
+  let shapes = null;                   // its fillable shapes, found when colouring starts
   let drewSomething = false;
   const tip = { x: N / 2, y: N / 2, on: false, color: WHITE };
 
@@ -93,7 +96,6 @@
   }
 
   async function start(name) {
-    clearColor();
     const data = await prepare(name);
     const total = data.strokes.reduce((s, p) => s + strokeLength(p), 0);
     // Gaps between strokes: longer jumps take a little longer, capped overall.
@@ -116,17 +118,29 @@
     if (reduce) { while (job && job.phase === 'line') step(1000); }
   }
 
-  function clearColor() {
+  // Sweep the floor clean for a new rangoli.
+  function clearAll() {
     job = null;
     tip.on = false;
     fills.length = 0;
-    showTray(false);
-    finished.color = false;
-    removeDiyas('color');
-    updateDiyaBtn();
-    fctx.clearRect(0, 0, N, N);
-    lctx.clearRect(0, 0, N, N);
+    for (const c of [fctx, lctx, dctx]) c.clearRect(0, 0, N, N);
     particles.length = 0;
+    drewSomething = false;
+    undoStack.length = 0; undoBtn.disabled = true;
+    dotsToggle.checked = false; plane.classList.remove('dots');
+    setKind(null);
+    unmake();
+  }
+  function setKind(k) {
+    kind = k;
+    plane.classList.toggle('kind-free', k === 'free');
+    plane.classList.toggle('kind-template', k === 'template');
+  }
+  function unmake() {                        // the rangoli is no longer finished
+    made = false;
+    shapes = null;
+    removeDiyas();
+    updateButtons();
   }
 
   // White outline grains around one point of a stroke.
@@ -159,7 +173,7 @@
       const pts = strokes[job.si];
       if (job.seg >= pts.length - 1) {         // stroke finished
         job.si++; job.seg = 0; job.segPos = 0;
-        if (job.si >= strokes.length) { job.phase = 'ready'; tip.on = false; outlineDone(); return; }
+        if (job.si >= strokes.length) { job.phase = 'ready'; tip.on = false; templateDone(); return; }
         if (job.gaps[job.si] === 0) continue;   // carries straight on
         job.walked = 0;
         job.pause = job.gaps[job.si] - budget / job.speed;   // rest of this frame counts as lifted
@@ -180,7 +194,7 @@
   }
 
   function step(dt) {
-    if (job && job.phase === 'line' && floor === 'color') stepLine(dt);   // waits while you're on the other floor
+    if (job && job.phase === 'line') stepLine(dt);
     stepFills(dt);
   }
 
@@ -189,7 +203,7 @@
   // from there until the shape is full. Several shapes can fill at once.
   const fills = [];
   function pourInto(ri, x, y, colour) {
-    const d = job.data, r = d.regions[ri], R = d.R, s = N / R;
+    const r = shapes.regions[ri], R = shapes.R, s = N / R;
     const keys = new Float32Array(r.px.length);
     for (let i = 0; i < r.px.length; i++) {
       const p = r.px[i];
@@ -228,7 +242,7 @@
   // ---------- Freehand drawing (Draw a rangoli) ----------
   // The floor is split into four quarters; every grain is mirrored across both
   // centre lines, so the other three quarters build themselves as you draw.
-  const pen = { x: 0, y: 0, down: false, over: false, walked: 0, id: null };
+  const pen = { x: 0, y: 0, down: false, over: false, walked: 0, carry: 0, id: null };
   const mirrors = (x, y) => [[x, y], [N - x, y], [x, N - y], [N - x, N - y]];
   const onFloor = (x, y) => x >= 0 && y >= 0 && x <= N && y <= N;
 
@@ -238,19 +252,23 @@
   }
 
   function penTo(x, y) {                    // trickle powder along the way, 1px at a time
+    // carry: how far the hand has moved since the last pinch of powder, so even
+    // tiny, slow movements keep laying a line instead of skipping it
     const L = Math.hypot(x - pen.x, y - pen.y);
-    for (let d = 1; d <= L; d++) {
+    let d = 1 - pen.carry;
+    for (; d <= L; d += 1) {
       const t = d / L;
       const flow = (0.8 + 0.25 * Math.sin(pen.walked * 0.05) + 0.15 * Math.sin(pen.walked * 0.21))
                  * (pen.walked < 6 ? 1.6 : 1);
       sprinkle(pen.x + (x - pen.x) * t, pen.y + (y - pen.y) * t, flow);
       pen.walked++;
     }
+    pen.carry = L - (d - 1);
     pen.x = x; pen.y = y;
   }
 
   function settle(dt) {                     // fingers held still: powder keeps piling up
-    if (mode !== 'draw' || !pen.down || !onFloor(pen.x, pen.y)) return;
+    if (mode !== 'free' || !pen.down || !onFloor(pen.x, pen.y)) return;
     const n = Math.floor(dt * 0.15 + Math.random());
     for (const [mx, my] of mirrors(pen.x, pen.y)) {
       for (let k = 0; k < n; k++) {
@@ -263,12 +281,12 @@
 
   function floorPoint(e) { return map().toFloor(e.clientX, e.clientY); }
 
-  // Colour mode, once the outline is done: tap (or drag across) shapes to fill them.
-  const filling = () => mode === 'color' && job && job.phase === 'ready';
+  // Colour mode, once the rangoli is made: tap (or drag across) shapes to fill them.
+  const filling = () => mode === 'color' && !!shapes;
   let filledThisDrag = new Set();
   function shapeAt(x, y) {
     if (!onFloor(x, y)) return -1;
-    const { R, at } = job.data;
+    const { R, at } = shapes;
     return at[Math.min(R - 1, (y / N * R) | 0) * R + Math.min(R - 1, (x / N * R) | 0)];
   }
   function fillAt(x, y) {
@@ -284,11 +302,13 @@
     try { layer.setPointerCapture(e.pointerId); } catch {}
     mapping = null;
     [pen.x, pen.y] = floorPoint(e);
-    pen.down = true; pen.id = e.pointerId; pen.walked = 0;
+    pen.down = true; pen.id = e.pointerId; pen.walked = 0; pen.carry = 0;
     if (mode === 'diya') { pen.down = false; placeOrLift(e); return; }
     if (filling()) { filledThisDrag = new Set(); fillAt(pen.x, pen.y); return; }
+    if (mode !== 'free') return;
     saveUndo();
     drewSomething = true;
+    shapes = null;                            // the drawing changed: find its shapes again when colouring
     sprinkle(pen.x, pen.y, 1.6);
   });
   layer.addEventListener('pointermove', e => {
@@ -297,7 +317,7 @@
       const [x, y] = floorPoint(ev);
       if (!pen.down || e.pointerId !== pen.id) { pen.x = x; pen.y = y; }
       else if (filling()) { pen.x = x; pen.y = y; fillAt(x, y); }
-      else penTo(x, y);
+      else if (mode === 'free') penTo(x, y);
     }
     pen.over = onFloor(pen.x, pen.y);
     if (mode === 'diya') { moveGhost(e); return; }
@@ -370,10 +390,10 @@
   }
 
   function drawStream(dt) {
-    const drawing = mode === 'draw';
+    const drawing = mode === 'free';
     let hx = pen.x, hy = pen.y, ho = 0;          // hand shadow: where, and how strong
     if (drawing) ho = pen.down ? 1 : pen.over ? 0.55 : 0;
-    else if (job && job.phase === 'line' && floor === 'color') { hx = tip.x; hy = tip.y; ho = tip.on ? 1 : 0.7; }
+    else if (job && job.phase === 'line') { hx = tip.x; hy = tip.y; ho = tip.on ? 1 : 0.7; }
     else if (fills.length) { hx = fills.at(-1).fx; hy = fills.at(-1).fy; ho = 1; }
     else if (filling() && pen.over) ho = 0.55;
     handEl.style.left = (hx / N * 100) + '%';
@@ -381,7 +401,7 @@
     handEl.style.opacity = ho;
 
     const k = plane.getBoundingClientRect().width / 700;    // scale with how big the rangoli is on screen
-    if (job && tip.on && floor === 'color') pour(tip.x, tip.y, tip.color, k);
+    if (job && tip.on) pour(tip.x, tip.y, tip.color, k);
     for (const f of fills) pour(f.fx, f.fy, f.shades, k);
     if (drawing && pen.down && onFloor(pen.x, pen.y)) {
       for (const [mx, my] of mirrors(pen.x, pen.y)) pour(mx, my, WHITE, k);
@@ -409,15 +429,20 @@
   requestAnimationFrame(loop);
 
   // ---------- Panel ----------
-  let mode = null;                           // 'draw' | 'color' | 'diya' | null
-  let speed = 2;                             // how fast a stencil is drawn (Speed slider)
+  let mode = null;                           // 'free' | 'template' | 'color' | 'diya' | null
+  let speed = 2;                             // how fast a template is drawn (Speed slider)
   const modeBtns = [...document.querySelectorAll('.mode-btn')];
+  const drawBtn = document.querySelector('[data-mode="draw"]');
   const colorBtn = document.querySelector('[data-mode="color"]');
   const diyaBtn = document.querySelector('[data-mode="diya"]');
   const diyaTip = document.getElementById('diya-tip');
-  const bars = { draw: document.getElementById('draw-bar'), color: document.getElementById('color-bar'), diya: document.getElementById('diya-bar') };
-  const fan = document.getElementById('fan');
-  const fanItems = [...fan.querySelectorAll('.fan-item')];
+  const colorTip = document.getElementById('color-tip');
+  const bars = {
+    free: document.getElementById('draw-bar'), template: document.getElementById('template-bar'),
+    color: document.getElementById('color-bar'), diya: document.getElementById('diya-bar'),
+  };
+  const menu = document.getElementById('draw-menu');
+  const menuItems = [...menu.querySelectorAll('button')];
   const dotsToggle = document.getElementById('dots-toggle');
   const quarterHint = document.getElementById('quarter-hint');
   function placeQuarterHint() {              // centred under the bottom dotted line of the quarters
@@ -439,93 +464,114 @@
     if (!diyaHint.hidden) placeDiyaHint();
   });
 
-  function showFloor(f) {
-    floor = f;
-    plane.classList.toggle('floor-draw', f === 'draw');
-    plane.classList.toggle('floor-color', f === 'color');
-    for (const [k, list] of Object.entries(placed)) list.forEach(d => (d.el.style.display = k === f ? '' : 'none'));
-    particles.length = 0;
-    updateDiyaBtn();
+  function flash(tipEl) {                    // say why a locked button can't be used yet (also for touch)
+    tipEl.classList.add('show');
+    clearTimeout(tipEl.hideT);
+    tipEl.hideT = setTimeout(() => tipEl.classList.remove('show'), 2200);
   }
 
   function setMode(m) {
-    if (m === 'diya' && !finished[floor]) {   // not yet: say why (also for touch, where there's no hover)
-      diyaTip.classList.add('show');
-      clearTimeout(diyaTip.hideT);
-      diyaTip.hideT = setTimeout(() => diyaTip.classList.remove('show'), 2200);
-      return;
-    }
+    if (m === 'diya' && !made) return flash(diyaTip);
+    if (m === 'color' && !made) return flash(colorTip);
     mode = m;
-    if (m === 'draw' || m === 'color') showFloor(m);
-    modeBtns.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === m)));
+    if (m === 'color' && !shapes) shapes = kind === 'template' ? job.data : freeShapes();
+    const pressed = { draw: m === 'free' || m === 'template', color: m === 'color', diya: m === 'diya' };
+    modeBtns.forEach(b => b.setAttribute('aria-pressed', String(!!pressed[b.dataset.mode])));
     for (const [name, el] of Object.entries(bars)) el.hidden = name !== m;
-    plane.classList.toggle('drawing', m === 'draw');
+    plane.classList.toggle('drawing', m === 'free');
     if (m === 'diya') reach = measureReach();
     mapping = null;
     pen.down = pen.over = false;
-    if (m !== 'color') openFan(false);
-    layer.classList.toggle('on', m === 'draw' || m === 'diya' || filling());
+    openMenu(false);
+    layer.classList.toggle('on', m === 'free' || m === 'diya' || filling());
     layer.style.cursor = '';
     showTray(filling());
-    quarterHint.hidden = m !== 'draw';
-    if (m === 'draw') placeQuarterHint();
+    if (filling()) trayHint.textContent = !shapes.regions.length ? 'Close your lines into shapes to colour them'
+      : colour ? `${colour.name}. Now tap a shape to fill it` : 'Tap a colour, then fill the rangoli';
+    quarterHint.hidden = m !== 'free';
+    if (m === 'free') placeQuarterHint();
     diyaHint.hidden = m !== 'diya';
     if (m === 'diya') placeDiyaHint();
     ghost.style.display = 'none';
   }
-  modeBtns.forEach(b => b.addEventListener('click', () => {
-    const m = b.dataset.mode;
-    if (m === 'color') {
-      if (mode !== 'color') setMode('color');
-      openFan(!fan.classList.contains('open'));
-    } else setMode(mode === m ? null : m);
-  }));
-  bars.draw.querySelector('[data-act="done"]').addEventListener('click', () => {
-    if (drewSomething) finished.draw = true;
+  drawBtn.addEventListener('click', () => openMenu(menu.hidden));
+  colorBtn.addEventListener('click', () => setMode(mode === 'color' ? null : 'color'));
+  diyaBtn.addEventListener('click', () => setMode(mode === 'diya' ? null : 'diya'));
+
+  // Locks: colouring and diyas wait until the rangoli is made.
+  function updateButtons(celebrate) {
+    for (const [btn, tipEl, readyText, waitText] of [
+      [colorBtn, colorTip, 'Colour your rangoli', 'Make your rangoli first, then colour it'],
+      [diyaBtn, diyaTip, 'Light diyas around your rangoli', 'Make your rangoli first, then light the diyas'],
+    ]) {
+      const was = btn.getAttribute('aria-disabled') === 'false';
+      btn.setAttribute('aria-disabled', String(!made));
+      tipEl.textContent = made ? readyText : waitText;
+      if (made && !was && celebrate) { btn.classList.remove('ready'); void btn.offsetWidth; btn.classList.add('ready'); }
+    }
+    const dl = document.getElementById('download-btn');       // nothing to save until there's a rangoli
+    dl.setAttribute('aria-disabled', String(!made));
+    dl.dataset.tip = made ? 'Save your rangoli as a picture' : 'Make your rangoli first, then save it';
+    if (!made && (mode === 'color' || mode === 'diya')) setMode(null);
+  }
+  function templateDone() {                  // the outline has finished drawing itself
+    made = true;
+    shapes = null;
+    updateButtons(true);
+  }
+
+  // Your own: freehand drawing. Picking it after a template starts a fresh floor.
+  function startFree() {
+    if (kind !== 'free') { clearAll(); setKind('free'); }
+    setMode('free');
+  }
+  // Templates: a fresh floor, then the outline draws itself.
+  function startTemplate(name) {
+    clearAll();
+    setKind('template');
+    setMode('template');
+    start(name);
+  }
+  bars.free.querySelector('[data-act="done"]').addEventListener('click', () => {
     dotsToggle.checked = false;                // the guide dots were only for drawing: leave just the rangoli
     plane.classList.remove('dots');
+    if (drewSomething) { made = true; updateButtons(true); }
     setMode(null);
-    updateDiyaBtn(true);
   });
+  bars.free.querySelector('[data-act="clear"]').addEventListener('click', () => { saveUndo(); clearDraw(); });
+  bars.template.querySelector('[data-act="clear"]').addEventListener('click', () => { clearAll(); setMode(null); });
+  bars.color.querySelector('[data-act="clear-colours"]').addEventListener('click', () => { fills.length = 0; fctx.clearRect(0, 0, N, N); });
+  bars.color.querySelector('[data-act="done"]').addEventListener('click', () => setMode(null));
 
-  // Circular stencil picker: the choices fan out of the button along an arc.
-  function placeFan() {
-    const r = colorBtn.getBoundingClientRect();
-    fan.style.left = (r.left + r.width / 2) + 'px';
-    fan.style.top = (r.top + r.height / 2) + 'px';
+  // The "Draw a rangoli" menu: a small panel just above the button.
+  function placeMenu() {
+    const r = drawBtn.getBoundingClientRect();
+    const left = Math.min(innerWidth - menu.offsetWidth - 8, Math.max(8, r.left + r.width / 2 - menu.offsetWidth / 2));
+    menu.style.left = left + 'px';
+    menu.style.top = (r.top - menu.offsetHeight - 10) + 'px';
   }
-  function openFan(on) {
-    if (on) placeFan();
-    fan.classList.toggle('open', on);
-    colorBtn.setAttribute('aria-expanded', String(on));
-    fanItems.forEach(b => (b.tabIndex = on ? 0 : -1));
-    if (on) setTimeout(() => fanItems[0].focus({ preventScroll: true }), 250);
+  function openMenu(on) {
+    menu.hidden = !on;
+    drawBtn.setAttribute('aria-expanded', String(on));
+    if (on) { placeMenu(); menuItems[0].focus({ preventScroll: true }); }
   }
-  addEventListener('resize', () => { if (fan.classList.contains('open')) placeFan(); });
-  for (const b of fanItems) {
+  addEventListener('resize', () => { if (!menu.hidden) placeMenu(); });
+  for (const b of menuItems) {
     b.addEventListener('click', () => {
-      fanItems.forEach(x => { x.setAttribute('aria-pressed', String(x === b)); x.classList.remove('chosen'); });
-      void b.offsetWidth;
-      b.classList.add('chosen');                // ripple, then the fan folds away and drawing starts
-      setTimeout(() => openFan(false), 320);
-      start(b.dataset.stencil);
+      openMenu(false);
+      if (b.dataset.pick === 'free') startFree();
+      else startTemplate(b.dataset.stencil);
     });
   }
-  addEventListener('keydown', e => { if (e.key === 'Escape' && fan.classList.contains('open')) { openFan(false); colorBtn.focus(); } });
+  addEventListener('keydown', e => { if (e.key === 'Escape' && !menu.hidden) { openMenu(false); drawBtn.focus(); } });
   document.addEventListener('pointerdown', e => {
-    if (fan.classList.contains('open') && !e.target.closest('.fan-item') && !colorBtn.contains(e.target)) openFan(false);
+    if (!menu.hidden && !menu.contains(e.target) && !drawBtn.contains(e.target)) openMenu(false);
   });
 
-  bars.color.querySelector('[data-act="clear"]').addEventListener('click', () => {
-    fanItems.forEach(x => x.setAttribute('aria-pressed', 'false'));
-    clearColor();
-  });
-  bars.draw.querySelector('[data-act="clear"]').addEventListener('click', () => { saveUndo(); clearDraw(); });
-
-  // Undo (Draw a rangoli): the floor is saved before each stroke and before Clear.
+  // Undo (your own drawing): the floor is saved before each stroke and before Clear.
   const UNDO_MAX = 15;
   const undoStack = [];
-  const undoBtn = bars.draw.querySelector('[data-act="undo"]');
+  const undoBtn = bars.free.querySelector('[data-act="undo"]');
   function saveUndo() {
     undoStack.push({ img: dctx.getImageData(0, 0, N, N), drew: drewSomething });
     if (undoStack.length > UNDO_MAX) undoStack.shift();
@@ -536,20 +582,76 @@
     if (!last) return;
     dctx.putImageData(last.img, 0, 0);
     drewSomething = last.drew;
-    if (!drewSomething && finished.draw) { finished.draw = false; removeDiyas('draw'); updateDiyaBtn(); }
+    shapes = null;
+    if (!drewSomething && made) unmake();
     undoBtn.disabled = !undoStack.length;
   }
   undoBtn.addEventListener('click', undo);
   addEventListener('keydown', e => {
-    if (mode === 'draw' && (e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); }
+    if (mode === 'free' && (e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); }
   });
-  function clearDraw() {
+  function clearDraw() {                     // Clear in your own drawing: lines and any colour on them
     dctx.clearRect(0, 0, N, N);
+    fctx.clearRect(0, 0, N, N);
+    fills.length = 0;
     particles.length = 0;
     drewSomething = false;
-    finished.draw = false;
-    removeDiyas('draw');
-    updateDiyaBtn();
+    unmake();
+  }
+
+  // The closed shapes in your own drawing, so they can be filled like a template's.
+  // 1. The lines, thickened a little so grainy powder closes up, are walls; every
+  //    pocket of floor they fence in, not touching the edge, becomes a shape.
+  // 2. The thickening shrank each shape away from its lines, so each one grows
+  //    back out over the line until it meets its neighbour (or the outside) halfway,
+  //    filling the wide spots where several lines cross, and swallowing any pocket
+  //    too small to be a shape. The colour then tucks right under the white edge.
+  function freeShapes() {
+    const R = 512;
+    const c = document.createElement('canvas');
+    c.width = c.height = R;
+    const x = c.getContext('2d');
+    x.drawImage(freeCv, 0, 0, R, R);
+    const a = x.getImageData(0, 0, R, R).data;
+    let wall = new Uint8Array(R * R);
+    for (let i = 0; i < R * R; i++) wall[i] = a[i * 4 + 3] > 40 ? 1 : 0;
+    for (let pass = 0; pass < 2; pass++) {    // thicken by 2px
+      const w2 = wall.slice();
+      for (let y = 1; y < R - 1; y++) for (let xx = 1; xx < R - 1; xx++) {
+        const i = y * R + xx;
+        if (!wall[i] && (wall[i - 1] | wall[i + 1] | wall[i - R] | wall[i + R] | wall[i - R - 1] | wall[i - R + 1] | wall[i + R - 1] | wall[i + R + 1])) w2[i] = 1;
+      }
+      wall = w2;
+    }
+    // label the open floor: shapes get 0, 1, 2…; the outside gets -2; crumbs stay
+    // unclaimed (-1), like the lines, for the shapes around them to take over
+    const lab = new Int32Array(R * R).fill(-1), queue = new Int32Array(R * R);
+    let count = 0;
+    const nb = p => { const px = p % R, py = (p / R) | 0; return [px > 0 ? p - 1 : -1, px < R - 1 ? p + 1 : -1, py > 0 ? p - R : -1, py < R - 1 ? p + R : -1]; };
+    for (let s = 0; s < R * R; s++) {
+      if (wall[s] || lab[s] !== -1) continue;
+      let head = 0, tail = 0, edge = false;
+      queue[tail++] = s; lab[s] = -3;
+      while (head < tail) {
+        const p = queue[head++], px = p % R, py = (p / R) | 0;
+        if (px === 0 || py === 0 || px === R - 1 || py === R - 1) edge = true;
+        for (const q of nb(p)) if (q >= 0 && !wall[q] && lab[q] === -1) { lab[q] = -3; queue[tail++] = q; }
+      }
+      const id = edge ? -2 : tail < 12 ? -1 : count++;
+      for (let k = 0; k < tail; k++) lab[queue[k]] = id;
+    }
+    // grow every labelled area out over the walls at once, one step at a time,
+    // so each line is shared between the areas on either side of it
+    let front = [];
+    for (let p = 0; p < R * R; p++) if (lab[p] !== -1) front.push(p);
+    while (front.length) {
+      const next = [];
+      for (const p of front) for (const q of nb(p)) if (q >= 0 && lab[q] === -1) { lab[q] = lab[p]; next.push(q); }
+      front = next;
+    }
+    const at = new Int16Array(R * R).fill(-1), lists = Array.from({ length: count }, () => []);
+    for (let p = 0; p < R * R; p++) if (lab[p] >= 0) { at[p] = lab[p]; lists[lab[p]].push(p); }
+    return { R, regions: lists.map(l => ({ px: Int32Array.from(l) })), at };
   }
 
   // Speed: the slider snaps to these steps.
@@ -565,7 +667,7 @@
   // ---------- Diyas on the rangoli ----------
   // Small lit diyas set on the floor: the clay bowl cut from the photo's own diya,
   // with the same glow layers and flicker as the diyas there, sized by perspective.
-  const placed = { draw: [], color: [] };
+  const placed = [];
   const diyaHost = document.getElementById('placed-diyas');
   const stage = document.getElementById('stage');
   const SRC_W = 1672, SRC_H = 941;           // source image size the stage is laid out in
@@ -597,7 +699,7 @@
     if (show) sitDiya(ghost, fx, fy);
   }
   function nearestDiya(e) {
-    return placed[floor].find(d => {
+    return placed.find(d => {
       const r = d.el.querySelector('.bowl').getBoundingClientRect();
       return e.clientX > r.left - 4 && e.clientX < r.right + 4 && e.clientY > r.top - 10 && e.clientY < r.bottom + 4;
     });
@@ -609,7 +711,7 @@
     if (!canPlace(fx, fy)) return;
     const el = makeDiya('');
     sitDiya(el, fx, fy);
-    placed[floor].push({ el, fx, fy });
+    placed.push({ el, fx, fy });
     window.diyaFlicker?.add(el);
     ghost.style.display = 'none';
   }
@@ -626,7 +728,7 @@
     const c = document.createElement('canvas');
     c.width = c.height = g;
     const x = c.getContext('2d');
-    x.drawImage(floor === 'color' ? lineCv : freeCv, 0, 0, g, g);
+    x.drawImage(kind === 'template' ? lineCv : freeCv, 0, 0, g, g);
     const a = x.getImageData(0, 0, g, g).data;
     const D = new Float32Array(GN * GN).fill(1e9);
     let x0 = g, y0 = g, x1 = -1, y1 = -1;
@@ -684,31 +786,20 @@
     return Math.hypot(dx, dy) <= reach.r[k0] * (1 - f) + reach.r[(k0 + 1) % ANG] * f;
   }
   function liftDiya(d) {
-    const list = placed[floor];
-    list.splice(list.indexOf(d), 1);
+    placed.splice(placed.indexOf(d), 1);
     window.diyaFlicker?.remove(d.el);
     d.el.classList.add('lift');
     setTimeout(() => d.el.remove(), 300);
   }
-  function removeDiyas(f) {
-    for (const d of placed[f]) { window.diyaFlicker?.remove(d.el); d.el.remove(); }
-    placed[f].length = 0;
+  function removeDiyas() {
+    for (const d of placed) { window.diyaFlicker?.remove(d.el); d.el.remove(); }
+    placed.length = 0;
   }
   addEventListener('resize', () => {
     mapping = null;
-    for (const list of Object.values(placed)) for (const d of list) sitDiya(d.el, d.fx, d.fy);
+    for (const d of placed) sitDiya(d.el, d.fx, d.fy);
   });
-  function updateDiyaBtn(celebrate) {
-    const ok = finished[floor];
-    const was = diyaBtn.getAttribute('aria-disabled') === 'false';
-    diyaBtn.setAttribute('aria-disabled', String(!ok));
-    diyaTip.textContent = ok ? 'Light diyas around your rangoli' : 'Make your rangoli first, then light the diyas';
-    if (ok && !was && celebrate !== false) {
-      diyaBtn.classList.remove('ready'); void diyaBtn.offsetWidth; diyaBtn.classList.add('ready');
-    }
-    if (!ok && mode === 'diya') setMode(null);
-  }
-  bars.diya.querySelector('[data-act="clear-diyas"]').addEventListener('click', () => removeDiyas(floor));
+  bars.diya.querySelector('[data-act="clear-diyas"]').addEventListener('click', () => removeDiyas());
   bars.diya.querySelector('[data-act="diyas-done"]').addEventListener('click', () => setMode(null));
 
   // ---------- Dots (Draw a rangoli) ----------
@@ -737,7 +828,7 @@
   });
 
   // ---------- Colour tray ----------
-  // Set down on the floor beside the rangoli once the outline is done. x, y:
+  // Set down on the floor beside the rangoli while you colour it. x, y:
   // middle of each powder heap as a fraction of tray.webp (from build_tray.py).
   const POWDERS = [
     { name: 'Pink',   color: '#e3176f', x: 0.247, y: 0.226 },
@@ -773,14 +864,6 @@
     void trayHint.offsetWidth;
     trayHint.classList.add('nudge');
   }
-  function outlineDone() {
-    finished.color = true;
-    updateDiyaBtn();
-    if (mode !== 'color') return;
-    layer.classList.add('on');
-    showTray(true);
-    trayHint.textContent = colour ? `${colour.name}. Now tap a shape to fill it` : 'Tap a colour, then fill the rangoli';
-  }
   function showTray(on) {
     trayEl.hidden = trayHint.hidden = !on;
     if (on) placeTray();
@@ -796,6 +879,14 @@
     const R = N * TRAY_SIZE / 2;
     const offPowder = (fx, fy) => !shape || [[0, 0], [-1, 0], [1, 0], [0, -.6], [0, .6], [-.7, -.45], [.7, -.45], [-.7, .45], [.7, .45]]
       .every(([a, b]) => shape.dist(fx + a * R, fy + b * R) > 28);
+    // the tray's picture stands up off the floor, so also keep the whole picture off the powder
+    const coversNoPowder = box => {
+      for (let i = 0; i <= 6; i++) for (let k = 0; k <= 6; k++) {
+        const [fx, fy] = m.toFloor(box.left + (box.right - box.left) * i / 6, box.top + (box.bottom - 26 - box.top) * k / 6);
+        if (shape.dist(fx, fy) < 56) return false;     // a clear margin, so it never sits over a shape's middle either
+      }
+      return true;
+    };
     let best = null, bestScore = Infinity;
     for (let fy = -0.7 * N; fy <= 1.4 * N; fy += N * 0.04) for (let fx = -0.5 * N; fx <= 1.5 * N; fx += N * 0.04) {
       const [cx, cy] = m.toScreen(fx, fy);
@@ -805,6 +896,7 @@
       if (w <= 0 || box.left < 8 || box.top < 8 || box.right > innerWidth - 8 || box.bottom > innerHeight - 8) continue;
       if (!avoid.every(r => box.right < r.left || box.left > r.right || box.bottom < r.top || box.top > r.bottom)) continue;
       if (!offPowder(fx, fy)) continue;
+      if (shape && !coversNoPowder(box)) continue;
       const score = Math.hypot(fx - N * 1.12, fy - N * 0.55);
       if (score < bestScore) { bestScore = score; best = box; }
     }
@@ -863,6 +955,7 @@
     }
   })();
 
-  showFloor('color');
-  window.rangoli = { start, clearColor, clearDraw, step, setMode, map, pen, get job() { return job; }, get floor() { return floor; }, fills, placed, finished };   // handy for testing from the console
+  updateButtons();
+  window.rangoli = { start, startFree, startTemplate, clearAll, step, setMode, map, pen, fills, placed,   // handy for testing from the console
+                     get job() { return job; }, get kind() { return kind; }, get made() { return made; }, get shapes() { return shapes; } };   // handy for testing from the console
 })();

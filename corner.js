@@ -78,13 +78,12 @@
     }
   }
   function rangoliLayer() {
-    // whatever is on show: the coloured stencil, or your freehand drawing (+ dots if they're on)
+    // the colour, under whichever outline is on the floor: a template's, or your own (+ dots if they're on)
     const c = document.createElement('canvas');
     c.width = c.height = N;
     const x = c.getContext('2d');
-    const color = window.rangoli.floor === 'color';
-    const layers = color ? [['.r-fill', .3], ['.r-line', .45]]
-                         : [['.r-dots', .45, plane.classList.contains('dots')], ['.r-free', .45]];
+    const layers = [['.r-fill', .3]].concat(window.rangoli.kind === 'template' ? [['.r-line', .45]]
+      : [['.r-dots', .45, plane.classList.contains('dots')], ['.r-free', .45]]);
     for (const [sel, shadow, on = true] of layers) {
       if (!on) continue;
       x.shadowColor = `rgba(0,0,0,${shadow})`; x.shadowOffsetY = 2; x.shadowBlur = 2;
@@ -181,7 +180,7 @@
 
   const dl = document.getElementById('download-btn');
   dl.addEventListener('click', async () => {
-    if (dl.classList.contains('busy')) return;
+    if (dl.classList.contains('busy') || dl.getAttribute('aria-disabled') === 'true') return;
     dl.classList.add('busy');
     await new Promise(r => setTimeout(r, 30));          // let the spinner show before the heavy work
     try {

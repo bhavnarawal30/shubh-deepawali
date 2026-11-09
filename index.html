@@ -134,8 +134,7 @@
   }
   /* Only one floor shows at a time, so a stencil and a freehand drawing never overlap. */
   .rangoli canvas { transition: opacity .2s; }
-  .rangoli.floor-draw .r-fill, .rangoli.floor-draw .r-line,
-  .rangoli.floor-color .r-free, .rangoli.floor-color .r-dots { opacity: 0; }
+  .rangoli.kind-free .r-line, .rangoli.kind-template .r-free, .rangoli.kind-template .r-dots { opacity: 0; }
 
   /* Diyas set on the rangoli: the same light as the others, smaller, on a clay bowl */
   .diya.placed { animation: diya-in .5s cubic-bezier(.34, 1.5, .64, 1); }
@@ -286,6 +285,8 @@
   .diya-corner { position: fixed; left: 20px; bottom: 20px; z-index: 6; }
   .diya-tip { left: 0; bottom: calc(100% + 10px); transform: translateY(4px); max-width: calc(100vw - 40px); white-space: normal; width: max-content; }
   .diya-btn:hover + .diya-tip, .diya-btn:focus-visible + .diya-tip, .diya-tip.show { opacity: 1; transform: translateY(0); }
+  .btn-tip { right: 0; bottom: calc(100% + 10px); transform: translateY(4px); }   /* above "Color a rangoli" while it's locked */
+  .mode-btn[aria-disabled="true"]:hover ~ .btn-tip, .mode-btn[aria-disabled="true"]:focus-visible ~ .btn-tip, .btn-tip.show { opacity: 1; transform: translateY(0); }
 
   /* ---------- Top-right icon buttons: download, music ---------- */
   .corner-tools { position: fixed; top: 20px; right: 20px; z-index: 6; display: flex; gap: 10px; }
@@ -301,13 +302,18 @@
   .tool-btn svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; overflow: visible; }
   .tool-btn:hover { transform: translateY(-2px) scale(1.06); border-color: rgba(255, 206, 128, .7); color: #fff6e6; box-shadow: 0 12px 26px rgba(0,0,0,.42), 0 0 18px rgba(255, 170, 60, .35); }
   .tool-btn:active { transform: scale(.94); }
+  /* locked: dim the icon and outline only, so its hint (::after) stays as clear as the others */
+  .tool-btn[aria-disabled="true"] { cursor: not-allowed; border-color: rgba(255, 196, 110, .14); background: rgba(30, 14, 5, .45); }
+  .tool-btn[aria-disabled="true"] svg { opacity: .4; }
+  .tool-btn[aria-disabled="true"]:hover, .tool-btn[aria-disabled="true"]:active { transform: none; border-color: rgba(255, 196, 110, .3); box-shadow: 0 8px 20px rgba(0,0,0,.35); }
+  .tool-btn[aria-disabled="true"]:hover .arrow { animation: none; }
   .tool-btn:focus-visible { outline: 2px solid #ffc46b; outline-offset: 3px; }
   /* All help text: plain, soft cream italic on the scene, no box, no shadow.
      Dimmed so it doesn't compete with the rangoli, still clear on the dark floor. */
-  .tool-btn::after, .diya-tip, .bar-hint, .tray-hint, .floor-hint {
+  .tool-btn::after, .diya-tip, .btn-tip, .bar-hint, .tray-hint, .floor-hint {
     color: rgba(255, 228, 194, .74); font: italic 500 14px/1.3 "Iowan Old Style", Georgia, serif;
   }
-  .tool-btn::after, .diya-tip {              /* hover hints */
+  .tool-btn::after, .diya-tip, .btn-tip {    /* hover hints */
     position: absolute; margin: 0; white-space: nowrap; pointer-events: none;
     opacity: 0; transition: opacity .2s, transform .2s;
   }
@@ -383,10 +389,10 @@
   .diya-btn .fire { fill: #ffb547; stroke: none; }
   .diya-btn[aria-pressed="true"] .lamp { opacity: 1; }
   .diya-btn[aria-pressed="true"] .fire { fill: #b02a08; stroke: #fff4d8; stroke-width: .8; }
-  .diya-btn[aria-disabled="true"] { opacity: .38 !important; cursor: not-allowed; filter: saturate(.4); }
-  .diya-btn[aria-disabled="true"] .spark, .diya-btn[aria-disabled="true"]::before { animation: none; opacity: 0; }
-  .diya-btn[aria-disabled="true"]:hover { transform: none; }
-  .diya-btn.ready { animation: ready 1.2s ease-out 2; }   /* a soft glow when it becomes available */
+  .mode-btn[aria-disabled="true"] { opacity: .38 !important; cursor: not-allowed; filter: saturate(.4); }
+  .mode-btn[aria-disabled="true"] .spark, .mode-btn[aria-disabled="true"]::before { animation: none; opacity: 0; }
+  .mode-btn[aria-disabled="true"]:hover { transform: none; }
+  .mode-btn.ready { animation: ready 1.2s ease-out 2; }   /* a soft glow when it becomes available */
   @keyframes ready { 40% { box-shadow: 0 10px 26px rgba(0,0,0,.4), 0 0 0 4px rgba(255, 196, 107, .35), 0 0 30px rgba(255, 170, 60, .6); } }
   .mode-btn svg circle[fill] { mix-blend-mode: screen; opacity: .9; }
   .spark {                                   /* tiny four-point twinkles on the button edge */
@@ -398,59 +404,38 @@
   }
   @keyframes sparkle { 0%, 100% { opacity: 0; transform: scale(.2) rotate(0); } 45%, 55% { opacity: .95; transform: scale(1) rotate(45deg); } }
 
-  /* ---------- Circular stencil picker, fans out of "Color a rangoli" ---------- */
-  .fan { position: fixed; width: 0; height: 0; z-index: 5; pointer-events: none; }
-  .fan::before {                             /* round glass disc behind the choices */
-    content: ""; position: absolute; left: -200px; top: -200px; width: 400px; height: 400px; border-radius: 50%;
-    background: radial-gradient(closest-side, rgba(36, 17, 6, .55), rgba(36, 17, 6, .78) 96%, transparent);
-    box-shadow: inset 0 0 0 1px rgba(255, 200, 120, .28), inset 0 0 40px rgba(255, 170, 70, .08), 0 14px 40px rgba(0,0,0,.4);
-    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-    transform: scale(0); transition: transform .45s cubic-bezier(.34, 1.4, .64, 1);
+  /* ---------- "Draw a rangoli" menu: just above the button ---------- */
+  .draw-menu {
+    position: fixed; z-index: 6; width: 236px; padding: 10px;
+    border-radius: 16px; background: rgba(28, 14, 6, .86); border: 1px solid rgba(255, 214, 160, .2);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 14px 34px rgba(0,0,0,.45);
+    color: #ffe9c7; font: 500 13px/1.2 system-ui, -apple-system, "Segoe UI", sans-serif;
+    animation: menu-in .18s ease-out;
   }
-  .fan-ring { position: absolute; left: -170px; top: -170px; width: 340px; height: 340px; overflow: visible; }
-  .fan-ring circle {
-    fill: none; stroke: rgba(255, 224, 170, .75); stroke-width: 2.2; stroke-linecap: round; stroke-dasharray: .1 10;
-    opacity: 0; transform: rotate(-90deg); transition: opacity .3s, transform .8s cubic-bezier(.2, .8, .3, 1);
+  .draw-menu[hidden] { display: none; }
+  @keyframes menu-in { from { opacity: 0; transform: translateY(6px); } }
+  .dm-own {
+    width: 100%; padding: 10px 12px; border: 1px solid rgba(255, 214, 160, .28); border-radius: 10px; cursor: pointer;
+    background: rgba(255, 238, 215, .08); color: #fff3dc; font: 600 17px/1 "Cormorant Garamond", Georgia, serif;
+    transition: background .15s, border-color .15s;
   }
-  .fan-item {
-    --r: 150px;
-    position: absolute; left: 0; top: 0; padding: 0; border: 0; background: none; cursor: pointer;
-    display: flex; flex-direction: column; align-items: center; gap: 6px;
-    color: #ffe9c7; font: italic 600 14px/1 "Iowan Old Style", Georgia, serif;
-    translate: -50% -50%;
-    transform: rotate(var(--a)) translate(0) rotate(calc(-1 * var(--a))) scale(.2);
-    opacity: 0; pointer-events: none;
-    transition: transform .5s cubic-bezier(.34, 1.56, .64, 1) var(--delay, 0s), opacity .25s var(--delay, 0s);
+  .dm-own:hover { background: rgba(255, 238, 215, .16); border-color: rgba(255, 214, 160, .5); }
+  .dm-label { margin: 16px 2px 10px; text-align: center; color: rgba(255, 228, 194, .7); font: 600 16px/1 "Cormorant Garamond", Georgia, serif; }
+  .dm-templates { display: flex; gap: 4px; }
+  .dm-templates button {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 6px 2px;
+    border: 0; border-radius: 10px; background: transparent; cursor: pointer;
+    color: #ffe9c7; font: 600 16px/1 "Cormorant Garamond", Georgia, serif;   /* same as the main buttons */
+    transition: background .15s;
   }
-  .medal {
-    position: relative; display: block; width: 74px; height: 74px; border-radius: 50%;
-    box-shadow: 0 0 0 2px rgba(255, 210, 140, .35), 0 8px 20px rgba(0,0,0,.45);
-    transition: transform .3s cubic-bezier(.34, 1.56, .64, 1), box-shadow .3s;
+  .dm-templates button:hover { background: rgba(255, 238, 215, .09); }
+  .dm-templates img {
+    width: 46px; height: 46px; border-radius: 50%; background: #fff;
+    filter: invert(1) sepia(.35) brightness(.95);   /* white powder lines on dark */
+    box-shadow: 0 0 0 1.5px rgba(255, 214, 160, .3);
   }
-  .medal img {
-    width: 100%; height: 100%; border-radius: 50%; display: block;
-    background: #fff; filter: invert(1) sepia(.35) brightness(.95);   /* white powder lines on dark */
-    transform: rotate(-120deg); transition: transform .7s cubic-bezier(.2, .8, .3, 1) var(--delay, 0s);
-  }
-  .medal::after {                            /* ripple when chosen */
-    content: ""; position: absolute; inset: -2px; border-radius: 50%; border: 2px solid #ffd28a; opacity: 0;
-  }
-  .fan.open::before { transform: scale(1); }
-  .fan.open .fan-ring circle { opacity: 1; transform: rotate(0); }
-  .fan.open .fan-item {
-    transform: rotate(var(--a)) translate(var(--r)) rotate(calc(-1 * var(--a))) scale(1);
-    opacity: 1; pointer-events: auto;
-  }
-  .fan.open .medal img { transform: rotate(0); }
-  .fan-item:hover .medal { transform: translateY(-4px) scale(1.07); box-shadow: 0 0 0 2px #ffc46b, 0 0 22px rgba(255, 180, 80, .55), 0 12px 24px rgba(0,0,0,.5); }
-  .fan-item:hover .medal img { animation: spin 14s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .fan-item:active .medal { transform: scale(.94); }
-  .fan-item[aria-pressed="true"] .medal { box-shadow: 0 0 0 2px #ffc46b, 0 0 18px rgba(255, 180, 80, .5), 0 8px 20px rgba(0,0,0,.45); }
-  .fan-item.chosen .medal::after { animation: ripple .55s ease-out; }
-  @keyframes ripple { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(1.6); } }
-  .fan-item:focus-visible { outline: none; }
-  .fan-item:focus-visible .medal { box-shadow: 0 0 0 3px #ffc46b; }
+  .dm-templates button:hover img { box-shadow: 0 0 0 1.5px #ffc46b; }
+  .draw-menu button:focus-visible { outline: 2px solid #ffc46b; outline-offset: 1px; }
 
   @media (max-width: 640px) {
     .floor-bar .bar-hint {                   /* sits just above the buttons, so they stay put */
@@ -469,7 +454,6 @@
   }
   @media (prefers-reduced-motion: reduce) {
     .mode-btn::before, .spark, #download-btn:hover .arrow, #music-btn .wave { animation: none; }
-    .fan-item, .fan::before, .medal img { transition-duration: .01s; }
   }
 
   @media (prefers-reduced-motion: reduce) { .bulb > * { animation: none; } }
@@ -531,22 +515,29 @@
   <button class="text-btn" data-act="clear">Clear</button>
   <button class="text-btn" data-act="done">Done</button>
 </div>
-<div class="floor-bar" id="color-bar" role="toolbar" aria-label="Colouring" hidden>
+<div class="floor-bar" id="template-bar" role="toolbar" aria-label="Drawing from a template" hidden>
   <button class="text-btn" data-act="clear">Clear</button>
   <label class="speed">Speed <input type="range" id="speed" min="0" max="8" step="1" value="5" aria-valuetext="2×"><b id="speed-val">2×</b></label>
 </div>
+<div class="floor-bar" id="color-bar" role="toolbar" aria-label="Colouring" hidden>
+  <button class="text-btn" data-act="clear-colours">Clear colours</button>
+  <button class="text-btn" data-act="done">Done</button>
+</div>
 
-<!-- Stencils fan out in a circle from the "Color a rangoli" button -->
-<div class="fan" id="fan" role="group" aria-label="Choose a rangoli">
-  <svg class="fan-ring" viewBox="-170 -170 340 340" aria-hidden="true"><circle r="150"/></svg>
-  <button class="fan-item" data-stencil="lotus" aria-pressed="false" tabindex="-1" style="--a:-142deg; --delay:.04s"><span class="medal"><img src="stencils/lotus.webp" alt=""></span>Lotus</button>
-  <button class="fan-item" data-stencil="peacock" aria-pressed="false" tabindex="-1" style="--a:-108deg; --delay:.1s"><span class="medal"><img src="stencils/peacock.webp" alt=""></span>Peacock</button>
-  <button class="fan-item" data-stencil="star" aria-pressed="false" tabindex="-1" style="--a:-74deg; --delay:.16s"><span class="medal"><img src="stencils/star.webp" alt=""></span>Star</button>
+<!-- "Draw a rangoli" opens this small menu: draw your own, or pick a template -->
+<div class="draw-menu" id="draw-menu" role="menu" aria-label="Draw a rangoli" hidden>
+  <button class="dm-own" role="menuitem" data-pick="free">Draw your own</button>
+  <p class="dm-label">or start from a template</p>
+  <div class="dm-templates">
+    <button role="menuitem" data-stencil="lotus"><img src="stencils/lotus.webp" alt="">Lotus</button>
+    <button role="menuitem" data-stencil="peacock"><img src="stencils/peacock.webp" alt="">Peacock</button>
+    <button role="menuitem" data-stencil="star"><img src="stencils/star.webp" alt="">Star</button>
+  </div>
 </div>
 
 <!-- Top right: save a picture, music on/off -->
 <div class="corner-tools">
-  <button class="tool-btn" id="download-btn" aria-label="Download your rangoli as a picture" data-tip="Save your rangoli as a picture">
+  <button class="tool-btn" id="download-btn" aria-label="Download your rangoli as a picture" aria-disabled="true" data-tip="Make your rangoli first, then save it">
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <g class="arrow"><path d="M12 4v10"/><path d="M7.5 10.5 12 15l4.5-4.5"/></g>
       <path d="M5 16.5v2a1.5 1.5 0 0 0 1.5 1.5h11a1.5 1.5 0 0 0 1.5-1.5v-2"/>
@@ -575,12 +566,13 @@
 </div>
 
 <div class="modes">
-  <button class="mode-btn" data-mode="draw" aria-pressed="false" style="--shine:0s">
+  <button class="mode-btn" data-mode="draw" aria-pressed="false" aria-expanded="false" aria-controls="draw-menu" aria-haspopup="menu" style="--shine:0s">
     <i class="spark" style="--x:12%; --y:-5px; --d:.4s"></i><i class="spark" style="--x:88%; --y:70%; --s:6px; --d:1.9s"></i>
     Draw a rangoli</button>
-  <button class="mode-btn" data-mode="color" aria-pressed="false" aria-expanded="false" aria-controls="fan" style="--shine:3.5s">
+  <button class="mode-btn" data-mode="color" aria-pressed="false" aria-disabled="true" aria-describedby="color-tip" style="--shine:3.5s">
     <i class="spark" style="--x:80%; --y:-5px; --d:1.2s"></i><i class="spark" style="--x:6%; --y:72%; --s:6px; --d:2.6s"></i>
     Color a rangoli</button>
+  <p class="btn-tip" id="color-tip">Make your rangoli first, then colour it</p>
 </div>
 
 <script>
